@@ -1,1 +1,7 @@
--r backend/requirements.txt
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+litellm>=1.40.0
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+supabase>=2.0.0
+facebook-business>=20.0.0
