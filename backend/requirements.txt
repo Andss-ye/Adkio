@@ -1,0 +1,13 @@
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+pydantic==2.11.4
+python-dotenv==1.1.0
+
+# LLM
+litellm==1.72.6
+
+# Supabase
+supabase==2.15.1
+
+# Meta Ads (Objetivo C — incluido acá para que el env sea completo)
+facebook-business==21.0.5
