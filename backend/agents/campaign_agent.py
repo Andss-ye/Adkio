@@ -156,10 +156,11 @@ Reglas:
 
 
 def _get_brand_config(brand_id: str) -> dict:
-    # TODO: replace with Supabase call when Objetivo B is merged
-    # from backend.db.supabase_client import get_brand_config
-    # return get_brand_config(brand_id)
-    return _DEMO_BRAND_CONFIG
+    from backend.db.supabase_client import get_brand_config
+    config = get_brand_config(brand_id)
+    if config is None:
+        raise ValueError(f"Brand config '{brand_id}' no encontrado en Supabase")
+    return config
 
 
 def _dispatch_tool(

@@ -33,3 +33,10 @@ htmlcov/
 
 # OS
 .DS_Store
+
+# Supabase CLI temp
+supabase/.temp/
+
+# Claude Code agents/skills (herramienta local)
+.agents/
+skills-lock.json
