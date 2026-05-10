@@ -3,6 +3,7 @@ Generates Meta Ads copy (headline, body, CTA) using LLM.
 Follows brand tone and approved copy examples from brand_config.
 """
 import json
+import re
 from backend.llm import call_llm
 
 
@@ -49,10 +50,9 @@ def copy_generator(
     try:
         resp = call_llm(messages)
         raw = resp.choices[0].message.content.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
+        match = re.search(r"```(?:json)?\s*([\s\S]*?)```", raw)
+        if match:
+            raw = match.group(1)
         data = json.loads(raw.strip())
         return {
             "headline": data.get("headline", ""),

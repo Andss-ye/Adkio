@@ -7,27 +7,30 @@ from unittest.mock import MagicMock
 import pytest
 
 
-# ── Brand config fixture ───────────────────────────────────────────────────
+# ── Brand config ──────────────────────────────────────────────────────────
+
+DEMO_BRAND_CONFIG = {
+    "id": "demo-edu-latam",
+    "negocio_nombre": "AcademiaEjecutiva LATAM",
+    "negocio_industria": "educacion ejecutiva / networking empresarial",
+    "propuesta_de_valor": "Inmersiones para fundadores y CEOs",
+    "publico_roles": ["Founder", "CEO"],
+    "publico_paises": ["Colombia", "Mexico"],
+    "publico_edad_min": 28,
+    "publico_edad_max": 52,
+    "publico_intereses": ["entrepreneurship", "leadership development"],
+    "presupuesto_min_campana_usd": 100.0,
+    "presupuesto_max_campana_usd": 500.0,
+    "tono_estilo": ["aspiracional", "directo"],
+    "tono_evitar": ["lenguaje de autoayuda"],
+    "ejemplos_copy_aprobado": ["Los mejores líderes no crecen solos."],
+    "pixel_configurado": False,
+}
+
 
 @pytest.fixture
 def brand_config() -> dict:
-    return {
-        "id": "demo-edu-latam",
-        "negocio_nombre": "AcademiaEjecutiva LATAM",
-        "negocio_industria": "educacion ejecutiva / networking empresarial",
-        "propuesta_de_valor": "Inmersiones para fundadores y CEOs",
-        "publico_roles": ["Founder", "CEO"],
-        "publico_paises": ["Colombia", "Mexico"],
-        "publico_edad_min": 28,
-        "publico_edad_max": 52,
-        "publico_intereses": ["entrepreneurship", "leadership development"],
-        "presupuesto_min_campana_usd": 100.0,
-        "presupuesto_max_campana_usd": 500.0,
-        "tono_estilo": ["aspiracional", "directo"],
-        "tono_evitar": ["lenguaje de autoayuda"],
-        "ejemplos_copy_aprobado": ["Los mejores líderes no crecen solos."],
-        "pixel_configurado": False,
-    }
+    return DEMO_BRAND_CONFIG
 
 
 # ── LLM mock helpers ───────────────────────────────────────────────────────
