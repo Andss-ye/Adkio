@@ -18,38 +18,6 @@ from backend.tools.campaign_validator import campaign_validator
 from backend.tools.campaign_launcher import campaign_launcher
 from backend.tools.report_generator import report_generator
 
-# Mock brand config — replaced by Supabase when Objetivo B is merged
-_DEMO_BRAND_CONFIG = {
-    "id": "demo-edu-latam",
-    "negocio_nombre": "AcademiaEjecutiva LATAM",
-    "negocio_industria": "educacion ejecutiva / networking empresarial",
-    "propuesta_de_valor": (
-        "Inmersiones presenciales y online para fundadores y CEOs "
-        "que quieren escalar aprendiendo de quienes ya lo hicieron"
-    ),
-    "publico_roles": ["Founder", "CEO", "Co-founder", "Director General"],
-    "publico_paises": ["Colombia", "Mexico", "Peru", "Argentina"],
-    "publico_edad_min": 28,
-    "publico_edad_max": 52,
-    "publico_intereses": [
-        "entrepreneurship",
-        "business networking",
-        "leadership development",
-        "startup company",
-        "venture capital",
-        "Harvard Business Review",
-    ],
-    "presupuesto_min_campana_usd": 100.0,
-    "presupuesto_max_campana_usd": 500.0,
-    "tono_estilo": ["aspiracional", "directo", "basado en pares"],
-    "tono_evitar": ["lenguaje de autoayuda", "promesas vacias", "tono academico universitario"],
-    "ejemplos_copy_aprobado": [
-        "¿Cuántas decisiones importantes tomas completamente solo?",
-        "Los mejores líderes no crecen solos. Crecen con los correctos.",
-    ],
-    "pixel_configurado": False,
-}
-
 _TOOL_DEFINITIONS = [
     {
         "type": "function",
