@@ -8,6 +8,14 @@ from supabase import create_client, Client
 
 _client: Optional[Client] = None
 
+# Columnas válidas de la tabla brand_configs — cualquier campo extra del LLM se descarta
+_SCHEMA_FIELDS = {
+    "slug", "negocio_nombre", "negocio_industria", "propuesta_de_valor",
+    "publico_roles", "publico_paises", "publico_edad_min", "publico_edad_max",
+    "publico_intereses", "presupuesto_min_campana_usd", "presupuesto_max_campana_usd",
+    "tono_estilo", "tono_evitar", "ejemplos_copy_aprobado", "pixel_configurado", "metadata",
+}
+
 
 def _get_client() -> Client:
     global _client
@@ -22,23 +30,32 @@ def _get_client() -> Client:
     return _client
 
 
+def _clean(data: dict) -> dict:
+    """Filtra campos que no existen en la tabla (ej: campos_inferidos del LLM)."""
+    return {k: v for k, v in data.items() if k in _SCHEMA_FIELDS}
+
+
 def create_brand_config(data: dict) -> str:
     """Inserta un brand_config nuevo. Retorna el UUID generado."""
     client = _get_client()
-    payload = {k: v for k, v in data.items() if k != "id"}
+    payload = _clean(data)
     result = client.table("brand_configs").insert(payload).execute()
+    if not result.data:
+        raise RuntimeError("Supabase no devolvió datos al insertar brand_config")
     return result.data[0]["id"]
 
 
 def upsert_brand_config(data: dict) -> str:
     """Inserta o actualiza por slug. Retorna el UUID del registro."""
     client = _get_client()
-    payload = {k: v for k, v in data.items() if k != "id"}
+    payload = _clean(data)
     result = (
         client.table("brand_configs")
         .upsert(payload, on_conflict="slug")
         .execute()
     )
+    if not result.data:
+        raise RuntimeError("Supabase no devolvió datos al hacer upsert brand_config")
     return result.data[0]["id"]
 
 
