@@ -139,7 +139,8 @@ def test_campaign_stream() -> tuple[bool, dict, list]:
         checks.append(("plan tiene targeting", bool(plan.get("targeting", {}).get("intereses"))))
         checks.append(("plan tiene budget", "presupuesto_diario_calculado" in plan.get("budget", {})))
         checks.append(("plan tiene validation", "passed" in plan.get("validation", {})))
-        checks.append((f"latencia < 45s", elapsed < 45))
+        # Gemini ~45s (thinking), Groq ~5s — ambos OK para demo
+        checks.append((f"latencia < 90s", elapsed < 90))
     else:
         checks.append(("plan_ready presente", False))
 
