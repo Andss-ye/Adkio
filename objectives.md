@@ -10,9 +10,9 @@
 
 | Objetivo | Estado | Branch | PR |
 |---|---|---|---|
-| A. Campaign Agent + Tools | 🔴 Pendiente | `obj-a/campaign-agent` | — |
-| B. Onboarding + Supabase | 🔴 Pendiente | `obj-b/onboarding` | — |
-| C. Meta Integration | 🔴 Pendiente | `obj-c/meta-integration` | — |
+| A. Campaign Agent + Tools | 🟢 En review | `obj-a/campaign-agent` | — |
+| B. Onboarding + Supabase | 🟢 En review | `obj-b/onboarding` | — |
+| C. Meta Integration | 🟢 En review | `obj-c/meta-integration` | — |
 | D. Frontend + Deploy | 🔴 Pendiente | `obj-d/frontend` | — |
 
 Estados: 🔴 Pendiente · 🟡 En progreso · 🟢 En review · ✅ Completado
@@ -128,11 +128,11 @@ Usar `supabase-py`. Crear la tabla `brand_configs` en Supabase con el schema de 
 
 ### Criterios de aceptación
 
-- [ ] Script `seed.py` corre sin errores y el registro `demo-edu-latam` existe en Supabase
-- [ ] Una conversación de onboarding de 3-5 turnos genera un `brand_config` válido
-- [ ] El agente nunca hace más de 1 pregunta por turno
-- [ ] `get_brand_config("demo-edu-latam")` retorna el seed correctamente
-- [ ] El config generado tiene todos los campos del schema de CONTEXT.md
+- [x] Script `seed.py` corre sin errores y el registro `demo-edu-latam` existe en Supabase
+- [x] Una conversación de onboarding de 3-5 turnos genera un `brand_config` válido
+- [x] El agente nunca hace más de 1 pregunta por turno
+- [x] `get_brand_config("demo-edu-latam")` retorna el seed correctamente (14/14 campos OK)
+- [x] El config generado tiene todos los campos del schema de CONTEXT.md
 
 ---
 
