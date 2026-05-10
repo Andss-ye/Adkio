@@ -6,14 +6,23 @@
 
 ---
 
-## Status board
+## Status board — Sprint 1 (INTEGRADO en `main`)
 
-| Objetivo | Estado | Branch | PR |
+| Objetivo | Estado | Branch | Resultado |
 |---|---|---|---|
-| A. Campaign Agent + Tools | 🟢 En review | `obj-a/campaign-agent` | — |
-| B. Onboarding + Supabase | 🟢 En review | `obj-b/onboarding` | — |
-| C. Meta Integration | 🟢 En review | `obj-c/meta-integration` | — |
-| D. Frontend + Deploy | 🔴 Pendiente | `obj-d/frontend` | — |
+| A. Campaign Agent + Tools | ✅ Completado | `obj-a/campaign-agent` | mergeado a main |
+| B. Onboarding + Supabase | ✅ Completado | `obj-b/onboarding` | mergeado a main |
+| C. Meta Integration | ✅ Completado | `obj-c/meta-integration` | mergeado a main |
+| D. Frontend + Deploy | 🔴 Pendiente | `obj-d/frontend` | **CRÍTICO** |
+
+## Status board — Sprint 2 (rama: `sprint-2/e2e-hardening`)
+
+| Objetivo | Estado | Responsable | Branch |
+|---|---|---|---|
+| E. Test e2e con LLM real | 🟡 En progreso | Freddy | `sprint-2/e2e-hardening` |
+| F. Switch Anthropic cuando lleguen créditos | 🔴 Pendiente | cualquiera | 1 línea en .env |
+| G. Frontend mínimo demo | 🔴 Pendiente | frontend team | `obj-d/frontend` |
+| H. Meta sandbox con credenciales reales | 🔴 Pendiente | Andrew | `sprint-2/e2e-hardening` |
 
 Estados: 🔴 Pendiente · 🟡 En progreso · 🟢 En review · ✅ Completado
 
@@ -248,6 +257,68 @@ A → endpoint /campaign → D puede conectar el frontend real
 
 Todos pueden trabajar en paralelo con mocks desde el minuto 0.
 ```
+
+---
+
+## SPRINT 2 — Hardening y Demo
+
+**Rama:** `sprint-2/e2e-hardening`
+**Objetivo:** que el flujo completo funcione de punta a punta con LLM real antes de que el frontend se conecte.
+
+### E. Test e2e con LLM real
+
+Problema conocido: los 56 tests pasan porque mockean el LLM. Nunca probamos el agente
+con Groq real. Si el JSON del LLM viene mal formado → el frontend ve un error genérico.
+
+**Qué hacer:**
+
+1. `scripts/test_e2e_campaign.py` — script que llama `POST /campaign` con el prompt de demo
+   y valida que el stream contenga los 4 tool calls con sus rationales.
+2. Medir latencia total (objetivo: < 30s para el flujo completo).
+3. Si Groq falla por rate limit → documentar el comportamiento y ajustar retry.
+
+**Prompt de demo a usar:**
+```
+"Quiero llenar nuestro evento en Bogotá, 15 de junio, $200, somos exclusivos"
+brand_id: "demo-edu-latam"
+```
+
+**Criterios de aceptación:**
+- [ ] El stream devuelve eventos: `tool_start` × 4, `tool_result` × 4, `plan_ready` × 1
+- [ ] Cada `tool_result` tiene campo `rationale` con texto real (no el fallback hardcodeado)
+- [ ] `POST /campaign/approve` devuelve `campaign_id` con formato real
+- [ ] Flujo completo en < 45s con Groq (< 15s cuando lleguen créditos Anthropic)
+
+### F. Switch a Anthropic (cuando lleguen créditos)
+
+**Una sola línea en `.env`:**
+```bash
+LLM_MODEL=anthropic/claude-sonnet-4-5
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Razón: Claude tiene tool use más predecible que Llama 3.3. El JSON del copy_generator
+y audience_analyzer será más consistente → menos fallbacks → demo más limpia.
+
+### G. Frontend mínimo para demo (Objetivo D)
+
+**Lo mínimo que tiene que existir para la reunión con Bilbao:**
+
+```
+[ Input de texto ] → [ Panel de razonamiento en stream ] → [ Preview de campaña ]
+                                                                    ↓
+                                                         [ Botón "Aprobar y lanzar" ]
+```
+
+- El panel de razonamiento es EL WOW — cada tool call aparece como una card
+- Sin esto no hay demo visual. Es el crítico #1.
+- Backend URL: `http://localhost:8000` (o Railway cuando despleguen)
+
+### H. Meta sandbox (Andrew)
+
+Cuando Andrew despierte: correr `scripts/test_meta_campaign.py` con las credenciales
+reales del .env. Si el sandbox funciona → `META_USE_SANDBOX=true` en el deploy.
+Si no → el mock calculado es indistinguible en la demo.
 
 ---
 
