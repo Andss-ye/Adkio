@@ -179,6 +179,8 @@ async def onboarding_message(req: OnboardingMessageRequest) -> OnboardingMessage
     new_history = history + [{"role": "user", "content": req.user_message}]
     if result["type"] == "question":
         new_history.append({"role": "assistant", "content": result["message"]})
+    elif result["type"] == "config":
+        new_history.append({"role": "assistant", "content": f"Brand config generado. ID: {result.get('brand_id')}"})
     _conversations[req.conversation_id] = new_history
 
     return OnboardingMessageResponse(conversation_id=req.conversation_id, **result)

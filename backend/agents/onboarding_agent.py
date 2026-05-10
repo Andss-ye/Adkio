@@ -115,19 +115,30 @@ Sin comentarios. Solo JSON válido.
 """.strip()
 
 
+def _parse_json(raw: str, fallback: dict) -> dict:
+    """Parsea JSON del LLM con fallback seguro. Evita 500 si el LLM devuelve texto inválido."""
+    try:
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("```")[1]
+            if cleaned.startswith("json"):
+                cleaned = cleaned[4:]
+        return json.loads(cleaned.strip())
+    except (json.JSONDecodeError, IndexError):
+        return fallback
+
+
 def _extract_from_conversation(history: list[dict]) -> dict:
     messages = [
         {"role": "system", "content": _EXTRACT_SYSTEM},
         *history,
     ]
-    response = call_llm(messages)
-    raw = response.choices[0].message.content.strip()
-    # Limpia posibles backticks de código
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-    return json.loads(raw.strip())
+    try:
+        response = call_llm(messages)
+        raw = response.choices[0].message.content.strip()
+        return _parse_json(raw, {})  # fallback vacío → score=0 → agente pregunta de nuevo
+    except Exception:
+        return {}
 
 
 def _generate_brand_config(history: list[dict], partial: dict) -> dict:
@@ -142,43 +153,17 @@ def _generate_brand_config(history: list[dict], partial: dict) -> dict:
             ),
         },
     ]
-    response = call_llm(messages)
-    raw = response.choices[0].message.content.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-    return json.loads(raw.strip())
+    try:
+        response = call_llm(messages)
+        raw = response.choices[0].message.content.strip()
+        return _parse_json(raw, partial)  # fallback: usar lo que ya teníamos
+    except Exception:
+        return partial
 
 
-def _next_question(missing_field: str, history: list[dict], business_name: str) -> str:
-    """Genera una pregunta conversacional para el campo que falta."""
-    base_question = FIELD_QUESTIONS[missing_field]
-    if not history:
-        return base_question
-
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "Sos un consultor de marketing haciendo onboarding de un cliente. "
-                "Tu tarea es hacer UNA sola pregunta de forma natural y conversacional. "
-                "No hagas más de una pregunta. No uses listas. Sé directo y amigable. "
-                "Adaptá la pregunta al contexto de la conversación previa."
-            ),
-        },
-        *history,
-        {
-            "role": "user",
-            "content": (
-                f"La próxima pregunta que necesito hacerle al cliente es sobre: {base_question}\n"
-                f"Su negocio se llama: {business_name or 'desconocido'}.\n"
-                "Formulá esta pregunta de forma natural basándote en la conversación previa."
-            ),
-        },
-    ]
-    response = call_llm(messages)
-    return response.choices[0].message.content.strip()
+def _next_question(missing_field: str) -> str:
+    """Retorna la pregunta predefinida para el campo. Sin LLM — elimina 1 llamada por turno."""
+    return FIELD_QUESTIONS[missing_field]
 
 
 # ---------- Interfaz principal ----------
@@ -225,14 +210,12 @@ class OnboardingAgent:
                 "confidence_score": score,
             }
 
-        # Necesitamos más info → preguntar lo más impactante que falta
+        # Necesitamos más info → preguntar lo más impactante que falta (sin LLM extra = sin rate limit)
         missing = _weakest_missing_field(extracted)
-        business_name = extracted.get("negocio_nombre") or ""
 
         if missing:
-            question = _next_question(missing, updated_history, business_name)
+            question = _next_question(missing)
         else:
-            # Score bajo pero todos los campos principales presentes → preguntar detalles
             question = (
                 "¿Hay algo más sobre tu marca o tus campañas anteriores que quieras que tenga en cuenta?"
             )
