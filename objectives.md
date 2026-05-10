@@ -10,7 +10,7 @@
 
 | Objetivo | Estado | Branch | PR |
 |---|---|---|---|
-| A. Campaign Agent + Tools | 🔴 Pendiente | `obj-a/campaign-agent` | — |
+| A. Campaign Agent + Tools | 🟢 En review | `obj-a/campaign-agent` | — |
 | B. Onboarding + Supabase | 🔴 Pendiente | `obj-b/onboarding` | — |
 | C. Meta Integration | 🔴 Pendiente | `obj-c/meta-integration` | — |
 | D. Frontend + Deploy | 🔴 Pendiente | `obj-d/frontend` | — |
@@ -60,7 +60,7 @@ El corazón del sistema. Un endpoint FastAPI que recibe un prompt del usuario y 
 - [ ] Cada tool call incluye su `rationale` en el stream
 - [ ] El stream termina con el plan completo (copy + audiencia + presupuesto + advertencias)
 - [ ] `POST /campaign/approve` dispara campaign_launcher y devuelve el reporte
-- [ ] `GET /health` responde 200
+- [x] `GET /health` responde 200
 - [ ] Cero valores hardcodeados fuera de los mocks explícitos
 
 ### Test rápido
