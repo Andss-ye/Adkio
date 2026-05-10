@@ -3,6 +3,7 @@ Analyzes and configures the Meta Ads audience from brand config and campaign goa
 Interest IDs are text-based here; campaign_launcher resolves real Meta IDs via TargetingSearch.
 """
 import json
+import re
 from backend.llm import call_llm
 
 # Estimated LATAM founder/executive audience baseline on Meta
@@ -77,11 +78,9 @@ def _llm_audience(
     try:
         resp = call_llm(messages)
         raw = resp.choices[0].message.content.strip()
-        # Strip markdown fences if present
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
+        match = re.search(r"```(?:json)?\s*([\s\S]*?)```", raw)
+        if match:
+            raw = match.group(1)
         data = json.loads(raw.strip())
         return (
             data.get("intereses", intereses_base),
@@ -98,7 +97,7 @@ def _llm_audience(
 
 def _estimate_reach(paises: list[str], edad_min: int, edad_max: int, n_intereses: int) -> int:
     # Rough heuristic: base × country factor × age range factor × interest narrowing
-    country_factor = min(len(paises) * 0.6, 1.8)
+    country_factor = min(max(len(paises), 1) * 0.6, 1.8)
     age_range = edad_max - edad_min
     age_factor = age_range / 40  # normalized to 40-year span
     interest_factor = max(0.3, 1.0 - (n_intereses * 0.05))

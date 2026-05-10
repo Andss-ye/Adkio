@@ -5,8 +5,11 @@ Controlled by META_USE_SANDBOX env var.
 Real Meta integration lives in backend/integrations/meta_ads.py (Objetivo C).
 This tool is the entry point used by the Campaign Agent.
 """
+import logging
 import os
 import time
+
+_log = logging.getLogger(__name__)
 
 # CPL benchmark for executive education in LATAM (USD)
 _CPL_BENCHMARK_LATAM_EDU = 15.0
@@ -71,8 +74,8 @@ def _launch_sandbox(
             "estimated_reach": f"{reach // 1000}K–{(reach * 2) // 1000}K personas",
             "preview_url": _ads_manager_url(ad_account_id, campaign_id),
         }
-    except Exception:
-        # Fall back to mock if sandbox fails
+    except Exception as exc:
+        _log.warning("Sandbox launch failed, falling back to mock: %s", exc)
         return _launch_mock(canal, copy, targeting, budget, duracion_dias, ad_account_id)
 
 
@@ -92,7 +95,7 @@ def _launch_mock(
 
     return {
         "campaign_id": campaign_id,
-        "status": "ACTIVE",
+        "status": "PAUSED",
         "estimated_reach": f"{reach // 1000}K–{(reach * 2) // 1000}K personas",
         "impressions_estimados": impressions,
         "preview_url": None,

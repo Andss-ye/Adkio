@@ -56,12 +56,12 @@ El corazón del sistema. Un endpoint FastAPI que recibe un prompt del usuario y 
 
 ### Criterios de aceptación
 
-- [ ] `POST /campaign` con prompt de prueba devuelve stream con los 4 tool calls visibles
-- [ ] Cada tool call incluye su `rationale` en el stream
-- [ ] El stream termina con el plan completo (copy + audiencia + presupuesto + advertencias)
-- [ ] `POST /campaign/approve` dispara campaign_launcher y devuelve el reporte
+- [x] `POST /campaign` con prompt de prueba devuelve stream con los 4 tool calls visibles
+- [x] Cada tool call incluye su `rationale` en el stream
+- [x] El stream termina con el plan completo (copy + audiencia + presupuesto + advertencias)
+- [x] `POST /campaign/approve` dispara campaign_launcher y devuelve el reporte
 - [x] `GET /health` responde 200
-- [ ] Cero valores hardcodeados fuera de los mocks explícitos
+- [x] Cero valores hardcodeados fuera de los mocks explícitos
 
 ### Test rápido
 

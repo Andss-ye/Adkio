@@ -6,6 +6,7 @@ Flow: budget_validator → audience_analyzer → copy_generator → campaign_val
 
 POST /campaign/approve triggers: campaign_launcher → report_generator
 """
+import asyncio
 import json
 import os
 from typing import AsyncGenerator
@@ -97,7 +98,12 @@ _TOOL_DEFINITIONS = [
             ),
             "parameters": {
                 "type": "object",
-                "properties": {},
+                "properties": {
+                    "notas": {
+                        "type": "string",
+                        "description": "Notas opcionales del agente sobre el estado de la campaña",
+                    }
+                },
                 "required": [],
             },
         },
@@ -123,9 +129,9 @@ Reglas:
 """
 
 
-def _get_brand_config(brand_id: str) -> dict:
+async def _get_brand_config(brand_id: str) -> dict:
     from backend.db.supabase_client import get_brand_config
-    config = get_brand_config(brand_id)
+    config = await asyncio.to_thread(get_brand_config, brand_id)
     if config is None:
         raise ValueError(f"Brand config '{brand_id}' no encontrado en Supabase")
     return config
@@ -205,7 +211,11 @@ async def run_campaign_agent(
       - plan_ready: {plan: dict}  <- agent stops here, awaits human approval
       - error: {message: str}
     """
-    brand_config = _get_brand_config(brand_id)
+    try:
+        brand_config = await _get_brand_config(brand_id)
+    except Exception as e:
+        yield _sse("error", {"message": f"Error cargando brand config: {str(e)}"})
+        return
     tool_outputs: dict = {}
 
     messages = [
@@ -224,7 +234,7 @@ async def run_campaign_agent(
 
     for _ in range(max_iterations):
         try:
-            response = call_llm(messages, tools=_TOOL_DEFINITIONS, stream=False)
+            response = await asyncio.to_thread(call_llm, messages, _TOOL_DEFINITIONS, False)
         except Exception as e:
             yield _sse("error", {"message": f"Error llamando al LLM: {str(e)}"})
             return
@@ -243,7 +253,9 @@ async def run_campaign_agent(
                 yield _sse("tool_start", {"tool": tool_name, "args": tool_args})
 
                 try:
-                    result = _dispatch_tool(tool_name, tool_args, brand_config, tool_outputs)
+                    result = await asyncio.to_thread(
+                        _dispatch_tool, tool_name, tool_args, brand_config, tool_outputs
+                    )
                 except Exception as e:
                     yield _sse("error", {"message": f"Error en tool {tool_name}: {str(e)}"})
                     return
@@ -304,6 +316,10 @@ async def approve_and_launch(plan: dict) -> dict:
     budget = plan.get("budget", {})
     duracion_dias = plan.get("duracion_dias", 14)
     budget_usd = budget.get("presupuesto_diario_calculado", 0) * duracion_dias
+    if budget_usd <= 0:
+        raise ValueError(
+            "El presupuesto calculado es cero — budget_validator debe ejecutarse antes de aprobar"
+        )
 
     campaign_result = campaign_launcher(
         canal="instagram",

@@ -14,6 +14,8 @@ def budget_validator(
     brand_config: dict,
     duracion_dias: int,
 ) -> dict:
+    if duracion_dias <= 0:
+        duracion_dias = 14
     presupuesto_diario = round(monto_usd / duracion_dias, 2)
     presupuesto_min = brand_config.get("presupuesto_min_campana_usd", 100.0)
     presupuesto_max = brand_config.get("presupuesto_max_campana_usd", 500.0)

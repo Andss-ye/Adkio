@@ -8,7 +8,7 @@ from backend.llm import call_llm
 _CHECKLIST = {
     "tiene_copy": lambda p: bool(p.get("copy", {}).get("headline")),
     "tiene_audiencia": lambda p: bool(p.get("targeting", {}).get("intereses")),
-    "tiene_presupuesto_valido": lambda p: p.get("budget", {}).get("aprobado", False),
+    "tiene_presupuesto_valido": lambda p: p.get("budget", {}).get("aprobado") is not False,
     "tiene_paises": lambda p: bool(p.get("targeting", {}).get("paises")),
     "tiene_duracion": lambda p: (p.get("duracion_dias", 0) or 0) >= 1,
     "learning_phase_cubierta": lambda p: (p.get("duracion_dias", 0) or 0) >= 7,

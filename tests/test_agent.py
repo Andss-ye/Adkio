@@ -4,16 +4,27 @@ Simulates the full 4-tool pipeline without Groq or Meta API calls.
 """
 import json
 import os
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from tests.conftest import make_tool_call_response, make_text_response
+from tests.conftest import make_tool_call_response, make_text_response, DEMO_BRAND_CONFIG
 
 os.environ.setdefault("META_AD_ACCOUNT_ID", "act_test123")
 os.environ.setdefault("META_USE_SANDBOX", "false")
 os.environ.setdefault("GROQ_API_KEY", "test-key")
 os.environ.setdefault("LLM_MODEL", "groq/llama-3.3-70b-versatile")
+
+
+@pytest.fixture(autouse=True)
+def _mock_brand_config():
+    """Patch _get_brand_config so agent tests don't need a live Supabase connection."""
+    with patch(
+        "backend.agents.campaign_agent._get_brand_config",
+        new_callable=AsyncMock,
+        return_value=DEMO_BRAND_CONFIG,
+    ):
+        yield
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
