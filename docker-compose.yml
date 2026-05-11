@@ -1,0 +1,27 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: adkio-backend:dev
+    container_name: adkio-backend
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app/backend
+    command: ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload"]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_BACKEND_URL: http://localhost:8000
+    image: adkio-frontend:dev
+    container_name: adkio-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
