@@ -68,11 +68,24 @@ def _launch_sandbox(
         )
 
         reach = _calculate_reach(targeting, budget)
+        expected_leads = max(1, int(budget / _CPL_BENCHMARK_LATAM_EDU))
         return {
             "campaign_id": campaign_id,
             "status": "PAUSED",
             "estimated_reach": f"{reach // 1000}K–{(reach * 2) // 1000}K personas",
             "preview_url": _ads_manager_url(ad_account_id, campaign_id),
+            "kpis": {
+                "expected_leads": expected_leads,
+                "cpl_usd": _CPL_BENCHMARK_LATAM_EDU,
+                "total_budget_usd": budget,
+                "daily_budget_usd": round(budget / max(duracion_dias, 1), 2),
+                "duration_days": duracion_dias,
+            },
+            "next_steps": [
+                "Activar la campaña en Meta Ads Manager",
+                "Monitorear las primeras 48h (fase de aprendizaje de Meta)",
+                f"Refrescar copy si el CPL supera ${_CPL_BENCHMARK_LATAM_EDU + 6:.0f} USD",
+            ],
         }
     except Exception as exc:
         _log.warning("Sandbox launch failed, falling back to mock: %s", exc)
@@ -91,14 +104,25 @@ def _launch_mock(
     campaign_id = f"act_{clean_id}_{int(time.time())}"
 
     reach = _calculate_reach(targeting, budget)
-    impressions = int(reach * 1.8)
+    expected_leads = max(1, int(budget / _CPL_BENCHMARK_LATAM_EDU))
 
     return {
         "campaign_id": campaign_id,
         "status": "PAUSED",
         "estimated_reach": f"{reach // 1000}K–{(reach * 2) // 1000}K personas",
-        "impressions_estimados": impressions,
         "preview_url": None,
+        "kpis": {
+            "expected_leads": expected_leads,
+            "cpl_usd": _CPL_BENCHMARK_LATAM_EDU,
+            "total_budget_usd": budget,
+            "daily_budget_usd": round(budget / max(duracion_dias, 1), 2),
+            "duration_days": duracion_dias,
+        },
+        "next_steps": [
+            "Activar la campaña en Meta Ads Manager",
+            "Monitorear las primeras 48h (fase de aprendizaje de Meta)",
+            f"Refrescar copy si el CPL supera ${_CPL_BENCHMARK_LATAM_EDU + 6:.0f} USD",
+        ],
     }
 
 

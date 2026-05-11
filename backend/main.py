@@ -33,7 +33,7 @@ except ImportError:
     _campaign_agent_available = False
 
 from backend.agents.onboarding_agent import onboarding_agent
-from backend.db.supabase_client import get_brand_config
+from backend.db.supabase_client import get_brand_config, list_campaigns
 
 app = FastAPI(title="Adkio API", version="0.1.0")
 
@@ -184,6 +184,12 @@ async def onboarding_message(req: OnboardingMessageRequest) -> OnboardingMessage
     _conversations[req.conversation_id] = new_history
 
     return OnboardingMessageResponse(conversation_id=req.conversation_id, **result)
+
+
+@app.get("/campaigns")
+async def get_campaigns(brand_id: str = "demo-edu-latam", limit: int = 50) -> list:
+    """Lista campañas lanzadas desde Supabase, ordenadas por fecha desc."""
+    return list_campaigns(brand_id=brand_id, limit=limit)
 
 
 @app.get("/brand-config/{brand_id}")

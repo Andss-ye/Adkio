@@ -48,6 +48,58 @@ const STATUS_LABELS: { name: CampaignStatus; color: string }[] = [
   { name: 'Revisión', color: STATUS_COLORS.Revisión },
 ];
 
+const BACKEND: string =
+  (import.meta as { env?: { VITE_BACKEND_URL?: string } }).env?.VITE_BACKEND_URL ??
+  'http://localhost:8000';
+
+function mapBackendCampaign(b: Record<string, unknown>): Campaign {
+  const status: Campaign['status'] =
+    String(b.status ?? '').toUpperCase() === 'ACTIVE' ? 'Activa' : 'Pausada';
+  const budget_usd = Number(b.budget_usd ?? 0);
+  const duration_days = Number(b.duration_days ?? 14);
+  const created_at = String(b.created_at ?? '');
+  const relTime = created_at
+    ? new Date(created_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })
+    : 'Hoy';
+  const paises = (b.paises as string[] | null) ?? [];
+  const leads = Number(b.expected_leads ?? 0);
+  return {
+    id: String(b.id ?? Math.random()),
+    name: String(b.copy_headline ?? 'Campaña Adkio'),
+    prompt: String(b.user_prompt ?? ''),
+    perf: leads > 0 ? `~${leads} leads` : String(b.estimated_reach ?? ''),
+    perfTone: 'good',
+    time: relTime,
+    status,
+    saved: false,
+    archived: false,
+    unread: true,
+    platform: 'Meta',
+    liveSince: relTime,
+    audience: {
+      label: paises.join(', ') || 'LATAM',
+      reach: String(b.estimated_reach ?? ''),
+      cpm: '',
+    },
+    budget: { dia: budget_usd / duration_days, dias: duration_days, total: budget_usd },
+    variants: [
+      {
+        color: '#00d2ff',
+        headline: String(b.copy_headline ?? ''),
+        cta: String(b.copy_cta ?? 'Ver más'),
+      },
+    ],
+    rationale: String(b.copy_body ?? ''),
+    metrics: leads > 0
+      ? [
+          { label: 'Leads estimados', value: `~${leads}`, good: true },
+          { label: 'CPL', value: `$${Number(b.cpl_usd ?? 15).toFixed(0)}`, good: true },
+          { label: 'Inversión', value: `$${budget_usd.toFixed(0)}`, good: true },
+        ]
+      : undefined,
+  };
+}
+
 export default function DashboardPage() {
   const [view, setView] = useState<ViewKey>('campañas');
   const [statusFilter, setStatusFilter] = useState<CampaignStatus | null>(null);
@@ -56,6 +108,25 @@ export default function DashboardPage() {
   const [savedMap, setSavedMap] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(campaigns.map((c) => [c.id, c.saved])),
   );
+  const [liveCampaigns, setLiveCampaigns] = useState<Campaign[]>([]);
+
+  /* Fetch real campaigns from backend — prepend to mock data */
+  useEffect(() => {
+    fetch(`${BACKEND}/campaigns`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: unknown) => {
+        if (!Array.isArray(data) || data.length === 0) return;
+        const mapped = (data as Record<string, unknown>[]).map(mapBackendCampaign);
+        setLiveCampaigns(mapped);
+        /* auto-select the most recent real campaign */
+        setSelectedId(mapped[0].id);
+        setSavedMap((prev) => ({
+          ...Object.fromEntries(mapped.map((c) => [c.id, false])),
+          ...prev,
+        }));
+      })
+      .catch(() => { /* backend offline — mock data already showing */ });
+  }, []);
 
   /* ─── live counts (react to savedMap mutations) ─── */
   const counts = useMemo(() => {
@@ -81,7 +152,8 @@ export default function DashboardPage() {
 
   /* ─── filter logic ─── */
   const filtered = useMemo(() => {
-    let list: Campaign[] = campaigns;
+    /* Real campaigns from backend prepend to mock data */
+    let list: Campaign[] = [...liveCampaigns, ...campaigns];
 
     /* primary view */
     if (view === 'archivo') {
@@ -105,7 +177,7 @@ export default function DashboardPage() {
     }
 
     return list;
-  }, [view, statusFilter, search, savedMap]);
+  }, [view, statusFilter, search, savedMap, liveCampaigns]);
 
   /* keep selectedId synced with the filtered list — fall back to the
      first item whenever the current selection isn't visible anymore */

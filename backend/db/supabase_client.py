@@ -103,3 +103,36 @@ def list_brand_configs() -> list[dict]:
     client = _get_client()
     result = client.table("brand_configs").select("id, slug, negocio_nombre, created_at").execute()
     return result.data or []
+
+
+# ── Campaigns ──────────────────────────────────────────────────────────────
+
+_CAMPAIGN_FIELDS = {
+    "brand_id", "campaign_id", "status", "estimated_reach", "preview_url",
+    "user_prompt", "copy_headline", "copy_body", "copy_cta",
+    "budget_usd", "duration_days", "paises", "expected_leads", "cpl_usd",
+}
+
+
+def create_campaign_result(data: dict) -> str:
+    """Persiste un resultado de campaña lanzada. Retorna el UUID generado."""
+    client = _get_client()
+    payload = {k: v for k, v in data.items() if k in _CAMPAIGN_FIELDS and v is not None}
+    result = client.table("campaigns").insert(payload).execute()
+    if not result.data:
+        raise RuntimeError("Supabase no devolvió datos al insertar campaign")
+    return result.data[0]["id"]
+
+
+def list_campaigns(brand_id: Optional[str] = None, limit: int = 50) -> list[dict]:
+    """Lista campañas ordenadas por fecha descendente."""
+    client = _get_client()
+    q = (
+        client.table("campaigns")
+        .select("*")
+        .order("created_at", desc=True)
+        .limit(limit)
+    )
+    if brand_id:
+        q = q.eq("brand_id", brand_id)
+    return q.execute().data or []
