@@ -86,7 +86,7 @@ const statusLabels = [
 
 export default function Inboxes() {
   return (
-    <section className="max-w-6xl mx-auto px-6 py-16 md:py-24">
+    <section id="producto" className="max-w-6xl mx-auto px-6 py-16 md:py-24">
       <div
         className="relative rounded-2xl overflow-hidden border border-white/10 bg-[#0e1014]/90 backdrop-blur-2xl opacity-0 animate-aura-rise"
         style={{ animationDelay: '1.1s' }}

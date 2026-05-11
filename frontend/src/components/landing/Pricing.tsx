@@ -57,7 +57,7 @@ export default function Pricing() {
   const [yearly, setYearly] = useState(false);
 
   return (
-    <section className="relative flex flex-col items-center overflow-x-hidden px-5 pt-10 pb-20">
+    <section id="precios" className="relative flex flex-col items-center overflow-x-hidden px-5 pt-10 pb-20">
       {/* Local noise filter for watermark gradient */}
       <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
         <filter id="c3-noise-pricing">
