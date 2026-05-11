@@ -25,7 +25,7 @@ export default function Navbar() {
           ))}
         </div>
         <div className="hidden md:block">
-          <AppleButton label="Probar Adkio" />
+          <AppleButton label="Probar Adkio" href="/dashboard" />
         </div>
         <button className="md:hidden w-10 h-10 rounded-full border border-white/10 bg-white/5 flex items-center justify-center text-white/80">
           <Menu className="w-4 h-4" />

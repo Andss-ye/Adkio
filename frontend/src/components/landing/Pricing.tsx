@@ -131,7 +131,10 @@ export default function Pricing() {
                   </li>
                 ))}
               </ul>
-              <button className="relative mt-auto self-center rounded-full bg-white text-black text-[0.88rem] font-semibold px-8 py-2.5 cursor-pointer transition-all duration-300 ease-[cubic-bezier(.22,1,.36,1)] hover:bg-[#f5f5f5] hover:scale-[1.02] hover:shadow-[0_8px_24px_rgba(255,255,255,0.15)]">
+              <button
+                onClick={() => (window.location.href = '/dashboard')}
+                className="relative mt-auto self-center rounded-full bg-white text-black text-[0.88rem] font-semibold px-8 py-2.5 cursor-pointer transition-all duration-300 ease-[cubic-bezier(.22,1,.36,1)] hover:bg-[#f5f5f5] hover:scale-[1.02] hover:shadow-[0_8px_24px_rgba(255,255,255,0.15)]"
+              >
                 Probar Adkio
               </button>
             </div>
