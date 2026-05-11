@@ -175,7 +175,10 @@ export default function AgentSection() {
                 <div className="text-sm md:text-base text-white/90">
                   Campaña lista para revisión
                 </div>
-                <button className="text-xs font-semibold tracking-tight px-4 py-2 rounded-full bg-white text-black hover:bg-white/90 transition-colors">
+                <button
+                  onClick={() => (window.location.href = '/dashboard')}
+                  className="text-xs font-semibold tracking-tight px-4 py-2 rounded-full bg-white text-black hover:bg-white/90 transition-colors"
+                >
                   Revisar
                 </button>
               </div>

@@ -22,7 +22,7 @@ export default function FinalCTA() {
           frase.
         </p>
         <div className="relative mt-8 flex items-center justify-center gap-3 flex-wrap">
-          <AppleButton label="Probá Adkio gratis" />
+          <AppleButton label="Probá Adkio gratis" href="/dashboard" />
           <button className="group inline-flex items-center gap-2 rounded-full border border-white/15 text-white text-sm font-medium px-5 py-3 hover:bg-white/5 transition-colors">
             <span>Hablar con ventas</span>
             <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-[1px]" />

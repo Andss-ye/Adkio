@@ -32,7 +32,7 @@ export default function Hero() {
         className="mt-8 flex flex-col items-center gap-3 opacity-0 animate-aura-fade-up"
         style={{ animationDelay: '0.7s' }}
       >
-        <AppleButton label="Probá Adkio gratis" />
+        <AppleButton label="Probá Adkio gratis" href="/dashboard" />
         <span className="text-xs text-white/40">
           Sin tarjeta · Conectá tu cuenta de Meta en 60 segundos
         </span>
