@@ -1,10 +1,10 @@
 import LogoMark from '../ui/LogoMark';
 
 const team = [
-  { name: 'Jonathan', github: '', linkedin: '' },
-  { name: 'Andrew', github: '', linkedin: '' },
-  { name: 'Freddy', github: '', linkedin: '' },
-  { name: 'Julian', github: '', linkedin: '' },
+  { name: 'Jonathan', github: 'https://github.com/Jonathanrbt', linkedin: 'https://www.linkedin.com/in/jonathan-romero-b2044a303/' },
+  { name: 'Andrew', github: 'https://github.com/Andss-ye', linkedin: 'https://www.linkedin.com/in/andss-ye/' },
+  { name: 'Freddy', github: 'https://github.com/FreddyB200', linkedin: 'https://www.linkedin.com/in/freddy-bautista-baquero/' },
+  { name: 'Julian', github: 'https://github.com/Julianlamaravilla', linkedin: 'https://www.linkedin.com/in/jarestrepo/' },
 ];
 
 const links = {
