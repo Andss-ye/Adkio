@@ -128,16 +128,17 @@ export default function DashboardPage() {
       .catch(() => { /* backend offline — mock data already showing */ });
   }, []);
 
-  /* ─── live counts (react to savedMap mutations) ─── */
+  /* ─── live counts (use real campaigns if available, else mock) ─── */
   const counts = useMemo(() => {
-    const total = campaigns.filter((c) => !c.archived).length;
-    const saved = campaigns.filter((c) => !c.archived && savedMap[c.id]).length;
-    const active = campaigns.filter((c) => !c.archived && c.status === 'Activa').length;
-    const drafts = campaigns.filter((c) => !c.archived && c.status === 'Borrador').length;
-    const archived = campaigns.filter((c) => c.archived).length;
-    const review = campaigns.filter((c) => !c.archived && c.status === 'Revisión').length;
+    const source = liveCampaigns.length > 0 ? liveCampaigns : campaigns;
+    const total = source.filter((c) => !c.archived).length;
+    const saved = source.filter((c) => !c.archived && savedMap[c.id]).length;
+    const active = source.filter((c) => !c.archived && c.status === 'Activa').length;
+    const drafts = source.filter((c) => !c.archived && c.status === 'Borrador').length;
+    const archived = source.filter((c) => c.archived).length;
+    const review = source.filter((c) => !c.archived && c.status === 'Revisión').length;
     return { total, saved, active, drafts, archived, review };
-  }, [savedMap]);
+  }, [savedMap, liveCampaigns]);
 
   /* keep getCampaignsCount export consistent for any external use */
   void getCampaignsCount;
@@ -366,7 +367,8 @@ export default function DashboardPage() {
               <div className="flex flex-col gap-0.5">
                 {STATUS_LABELS.map((l) => {
                   const active = statusFilter === l.name;
-                  const statusCount = campaigns.filter(
+                  const source = liveCampaigns.length > 0 ? liveCampaigns : campaigns;
+                  const statusCount = source.filter(
                     (c) => !c.archived && c.status === l.name,
                   ).length;
                   return (
@@ -400,16 +402,32 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Spend card — fixed at the bottom, never scrolls away */}
+          {/* Spend card — calculado de campañas reales si hay backend */}
           <div className="flex-shrink-0 p-4 border-t border-white/10">
             <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3.5">
-              <div className="text-[10px] uppercase tracking-widest text-white/40 mb-1">
-                Gasto hoy
-              </div>
-              <div className="text-2xl font-semibold text-white tracking-tight">
-                $1,284.<span className="text-white/40 text-base">12</span>
-              </div>
-              <div className="text-[11px] text-[#10b981] mt-1 font-medium">▲ 3.6x ROAS</div>
+              {liveCampaigns.length > 0 ? (
+                <>
+                  <div className="text-[10px] uppercase tracking-widest text-white/40 mb-1">
+                    Inversión planificada
+                  </div>
+                  <div className="text-2xl font-semibold text-white tracking-tight">
+                    ${Math.round(liveCampaigns.reduce((s, c) => s + (c.budget?.total ?? 0), 0)).toLocaleString('en-US')}
+                  </div>
+                  <div className="text-[11px] text-white/50 mt-1">
+                    {liveCampaigns.length} {liveCampaigns.length === 1 ? 'campaña creada' : 'campañas creadas'}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-[10px] uppercase tracking-widest text-white/40 mb-1">
+                    Gasto hoy
+                  </div>
+                  <div className="text-2xl font-semibold text-white tracking-tight">
+                    $1,284.<span className="text-white/40 text-base">12</span>
+                  </div>
+                  <div className="text-[11px] text-[#10b981] mt-1 font-medium">▲ 3.6x ROAS</div>
+                </>
+              )}
               <div className="mt-3 pt-3 border-t border-white/10 grid grid-cols-2 gap-2 text-[10px]">
                 <div>
                   <div className="text-white/40">Activas</div>
