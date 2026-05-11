@@ -12,7 +12,7 @@ export default function Hero() {
         <span>Ya disponible para Meta Ads</span>
       </div>
       <h1
-        className="text-4xl md:text-7xl font-semibold tracking-tight leading-[0.9] opacity-0 animate-aura-h1"
+        className="text-4xl sm:text-5xl md:text-7xl font-semibold tracking-tight leading-[0.9] opacity-0 animate-aura-h1"
         style={{ animationDelay: '0.3s' }}
       >
         <span className="block text-white">Tus Meta ads.</span>
