@@ -200,18 +200,6 @@ La interfaz que va a ver Bilbao. Tiene que verse como un producto real, no como 
 
 **Setup:** Vite + React 18 + TypeScript + Tailwind. No Next.js. No shadcn completo — solo componentes específicos si hacen falta (Dialog, Toast).
 
-**Sistema de diseño (obligatorio, no cambiar):**
-```
-Background:  #0A0E14
-Surface:     #131820
-Accent:      #00D4A8
-Text:        #E8ECF1
-Muted:       #6B7280
-Border:      rgba(255, 255, 255, 0.07)
-Font body:   Inter
-Font mono:   JetBrains Mono (para IDs, tool names, campaign_id)
-Radius:      8px base / 12px cards
-```
 
 **Tres zonas en pantalla:**
 

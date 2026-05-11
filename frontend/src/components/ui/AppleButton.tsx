@@ -5,15 +5,28 @@ type Props = {
   label?: string;
   full?: boolean;
   showApple?: boolean;
+  href?: string;
+  onClick?: () => void;
 };
 
 export default function AppleButton({
   label = 'Probar Adkio',
   full = false,
   showApple = false,
+  href,
+  onClick,
 }: Props) {
+  const handleClick = () => {
+    if (onClick) {
+      onClick();
+      return;
+    }
+    if (href) window.location.href = href;
+  };
+
   return (
     <button
+      onClick={handleClick}
       className={
         'group inline-flex items-center justify-center gap-2 rounded-full bg-white text-black font-medium text-sm px-5 py-3 transition-all hover:bg-white/90 active:scale-[0.98] ' +
         (full ? 'w-full' : '')
