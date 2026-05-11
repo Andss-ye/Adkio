@@ -49,8 +49,8 @@ export default function AppPage() {
         </div>
       </div>
 
-      {/* 3-panel layout */}
-      <div className="flex-1 grid overflow-hidden" style={{ gridTemplateColumns: '28% 42% 30%' }}>
+      {/* 3-panel layout — min-h-0 lets flex children shrink so overflow-y-auto works inside */}
+      <div className="flex-1 grid min-h-0" style={{ gridTemplateColumns: '28% 42% 30%' }}>
         <ChatPanel
           status={status}
           errorMsg={errorMsg}

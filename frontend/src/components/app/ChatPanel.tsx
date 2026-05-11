@@ -118,7 +118,7 @@ export default function ChatPanel({ status, errorMsg, mode, onSend }: Props) {
   const showSuggestions = messages.length === 1 && status === 'idle';
 
   return (
-    <div className="flex flex-col h-full border-r border-white/10">
+    <div className="flex flex-col h-full min-h-0 border-r border-white/10">
       {/* Header */}
       <div className="h-10 flex items-center gap-2.5 px-4 border-b border-white/10 flex-shrink-0">
         <Sparkles className="w-4 h-4 text-white/40" />

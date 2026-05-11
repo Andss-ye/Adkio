@@ -152,8 +152,8 @@ export default function DashboardPage() {
 
   /* ─── filter logic ─── */
   const filtered = useMemo(() => {
-    /* Real campaigns from backend prepend to mock data */
-    let list: Campaign[] = [...liveCampaigns, ...campaigns];
+    /* If backend returned real campaigns, use only those. Otherwise show mock. */
+    let list: Campaign[] = liveCampaigns.length > 0 ? liveCampaigns : campaigns;
 
     /* primary view */
     if (view === 'archivo') {

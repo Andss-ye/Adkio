@@ -11,7 +11,7 @@ export default function ReasoningPanel({ toolEvents, status }: Props) {
   const isEmpty = toolEvents.length === 0;
 
   return (
-    <div className="flex flex-col h-full border-r border-white/10">
+    <div className="flex flex-col h-full min-h-0 border-r border-white/10">
       {/* Header */}
       <div className="h-10 flex items-center gap-2 px-4 border-b border-white/10">
         <Sparkles className="w-3.5 h-3.5 text-white/40" />
