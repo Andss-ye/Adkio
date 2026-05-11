@@ -47,6 +47,64 @@ export const ChevronRight = ({ className = '' }: IconProps) => (
   </Base>
 );
 
+export const ChevronLeft = ({ className = '' }: IconProps) => (
+  <Base className={className}>
+    <polyline points="15 18 9 12 15 6" />
+  </Base>
+);
+
+export const Plus = ({ className = '' }: IconProps) => (
+  <Base className={className}>
+    <line x1="12" y1="5" x2="12" y2="19" />
+    <line x1="5" y1="12" x2="19" y2="12" />
+  </Base>
+);
+
+export const Play = ({ className = '' }: IconProps) => (
+  <Base className={className} fill="currentColor" stroke="none">
+    <polygon points="6 4 20 12 6 20 6 4" />
+  </Base>
+);
+
+export const Pause = ({ className = '' }: IconProps) => (
+  <Base className={className} fill="currentColor" stroke="none">
+    <rect x="6" y="4" width="4" height="16" />
+    <rect x="14" y="4" width="4" height="16" />
+  </Base>
+);
+
+export const Filter = ({ className = '' }: IconProps) => (
+  <Base className={className}>
+    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+  </Base>
+);
+
+export const Globe = ({ className = '' }: IconProps) => (
+  <Base className={className}>
+    <circle cx="12" cy="12" r="10" />
+    <line x1="2" y1="12" x2="22" y2="12" />
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+  </Base>
+);
+
+export const Users = ({ className = '' }: IconProps) => (
+  <Base className={className}>
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </Base>
+);
+
+export const Calendar = ({ className = '' }: IconProps) => (
+  <Base className={className}>
+    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+    <line x1="16" y1="2" x2="16" y2="6" />
+    <line x1="8" y1="2" x2="8" y2="6" />
+    <line x1="3" y1="10" x2="21" y2="10" />
+  </Base>
+);
+
 export const Menu = ({ className = '' }: IconProps) => (
   <Base className={className}>
     <line x1="3" y1="6" x2="21" y2="6" />
