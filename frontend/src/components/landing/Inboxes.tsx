@@ -86,7 +86,7 @@ const statusLabels = [
 
 export default function Inboxes() {
   return (
-    <section className="max-w-6xl mx-auto px-6 py-16 md:py-24">
+    <section id="producto" className="max-w-6xl mx-auto px-6 py-16 md:py-24">
       <div
         className="relative rounded-2xl overflow-hidden border border-white/10 bg-[#0e1014]/90 backdrop-blur-2xl opacity-0 animate-aura-rise"
         style={{ animationDelay: '1.1s' }}
@@ -103,9 +103,9 @@ export default function Inboxes() {
           </div>
         </div>
 
-        <div className="grid grid-cols-12 h-[560px]">
+        <div className="flex flex-col md:grid md:grid-cols-12 md:h-[560px]">
           {/* Sidebar */}
-          <aside className="col-span-3 border-r border-white/10 bg-black/30 p-4 flex flex-col gap-4 overflow-hidden">
+          <aside className="hidden md:flex md:col-span-3 border-r border-white/10 bg-black/30 p-4 flex-col gap-4 overflow-hidden">
             <button className="rounded-lg bg-white text-black text-xs font-semibold px-3 py-2 inline-flex items-center justify-center gap-2 hover:bg-white/90">
               <Sparkles className="w-3.5 h-3.5" />
               <span>Nueva campaña</span>
@@ -155,7 +155,7 @@ export default function Inboxes() {
           </aside>
 
           {/* Campaign list */}
-          <div className="col-span-4 border-r border-white/10 flex flex-col">
+          <div className="md:col-span-4 border-b border-white/10 md:border-b-0 md:border-r flex flex-col max-h-[220px] md:max-h-none overflow-hidden">
             <div className="h-10 border-b border-white/10 flex items-center gap-2 px-3 text-xs text-white/40">
               <Search className="w-3.5 h-3.5" />
               <span>Buscar campañas o prompts</span>
@@ -209,7 +209,7 @@ export default function Inboxes() {
           </div>
 
           {/* Detail */}
-          <div className="col-span-5 flex flex-col">
+          <div className="md:col-span-5 flex flex-col">
             <div className="h-10 border-b border-white/10 flex items-center justify-between px-3">
               <div className="flex items-center gap-1 text-white/60">
                 <button className="px-2 h-7 rounded-md hover:bg-white/5 flex items-center gap-1.5 text-[11px]">
