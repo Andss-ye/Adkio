@@ -341,10 +341,36 @@ async def approve_and_launch(plan: dict) -> dict:
         all_tool_outputs=tool_outputs,
     )
 
+    # Persistir en Supabase (best-effort — no bloquea si falla)
+    try:
+        from backend.db.supabase_client import create_campaign_result
+        kpis = campaign_result.get("kpis", {})
+        await asyncio.to_thread(create_campaign_result, {
+            "brand_id": plan.get("brand_id", "demo-edu-latam"),
+            "campaign_id": campaign_result.get("campaign_id"),
+            "status": campaign_result.get("status"),
+            "estimated_reach": campaign_result.get("estimated_reach"),
+            "preview_url": campaign_result.get("preview_url"),
+            "user_prompt": plan.get("user_prompt", ""),
+            "copy_headline": copy.get("headline"),
+            "copy_body": copy.get("body"),
+            "copy_cta": copy.get("cta"),
+            "budget_usd": budget_usd,
+            "duration_days": duracion_dias,
+            "paises": targeting.get("paises", []),
+            "expected_leads": kpis.get("expected_leads"),
+            "cpl_usd": kpis.get("cpl_usd"),
+        })
+    except Exception as _e:
+        import logging
+        logging.getLogger(__name__).warning("No se pudo persistir campaña en Supabase: %s", _e)
+
     return {
         "campaign_id": campaign_result.get("campaign_id"),
         "status": campaign_result.get("status"),
         "estimated_reach": campaign_result.get("estimated_reach"),
         "preview_url": campaign_result.get("preview_url"),
         "report": report,
+        "kpis": campaign_result.get("kpis"),
+        "next_steps": campaign_result.get("next_steps"),
     }

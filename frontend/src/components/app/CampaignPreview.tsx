@@ -45,7 +45,7 @@ export default function CampaignPreview({ plan, status, launchResult, onApprove,
     ];
 
     return (
-      <div className="flex flex-col h-full overflow-hidden">
+      <div className="flex flex-col h-full min-h-0 overflow-hidden">
         {/* Header */}
         <div className="h-10 flex items-center gap-2 px-4 border-b border-white/10 flex-shrink-0">
           <span className="relative flex w-1.5 h-1.5">
@@ -216,7 +216,7 @@ export default function CampaignPreview({ plan, status, launchResult, onApprove,
   const checklistPassed = Object.values(validation.checklist_results ?? {}).filter(Boolean).length;
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto no-scrollbar">
+    <div className="flex flex-col h-full min-h-0 overflow-y-auto no-scrollbar">
       {/* Header */}
       <div className="h-10 flex items-center gap-2 px-4 border-b border-white/10 flex-shrink-0">
         <span className="w-1.5 h-1.5 rounded-full bg-[#10b981]" />
