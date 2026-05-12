@@ -1,15 +1,24 @@
 import LogoMark from '../ui/LogoMark';
 
 const team = [
-  { name: 'Jonathan', github: '', linkedin: '' },
-  { name: 'Andrew', github: '', linkedin: '' },
-  { name: 'Freddy', github: '', linkedin: '' },
-  { name: 'Julian', github: '', linkedin: '' },
+  { name: 'Jonathan', github: 'https://github.com/Jonathanrbt', linkedin: 'https://www.linkedin.com/in/jonathan-romero-b2044a303/' },
+  { name: 'Andrew', github: 'https://github.com/Andss-ye', linkedin: 'https://www.linkedin.com/in/andss-ye/' },
+  { name: 'Freddy', github: 'https://github.com/FreddyB200', linkedin: 'https://www.linkedin.com/in/freddy-bautista-baquero/' },
+  { name: 'Julian', github: 'https://github.com/Julianlamaravilla', linkedin: 'https://www.linkedin.com/in/jarestrepo/' },
 ];
 
 const links = {
-  producto: ['Funciones', 'Precios', 'Clientes', 'Estado'],
-  legal: ['Privacidad', 'Términos', 'Seguridad', 'Cookies'],
+  producto: [
+    { label: 'Funciones', href: '#producto' },
+    { label: 'Precios', href: '#precios' },
+    { label: 'Estado', href: '#' },
+  ],
+  legal: [
+    { label: 'Privacidad', href: '/privacidad' },
+    { label: 'Términos', href: '/terminos' },
+    { label: 'Seguridad', href: '/seguridad' },
+    { label: 'Cookies', href: '/cookies' },
+  ],
 };
 
 function GithubIcon() {
@@ -52,9 +61,9 @@ export default function Footer() {
           <div>
             <div className="text-[10px] uppercase tracking-[0.2em] text-white/35 mb-5">Producto</div>
             <ul className="flex flex-col gap-3.5">
-              {links.producto.map((l) => (
-                <li key={l}>
-                  <a href="#" className="text-[0.95rem] text-white/65 hover:text-white transition-colors">{l}</a>
+              {links.producto.map(({ label, href }) => (
+                <li key={label}>
+                  <a href={href} className="text-[0.95rem] text-white/65 hover:text-white transition-colors">{label}</a>
                 </li>
               ))}
             </ul>
@@ -62,9 +71,9 @@ export default function Footer() {
           <div>
             <div className="text-[10px] uppercase tracking-[0.2em] text-white/35 mb-5">Legal</div>
             <ul className="flex flex-col gap-3.5">
-              {links.legal.map((l) => (
-                <li key={l}>
-                  <a href="#" className="text-[0.95rem] text-white/65 hover:text-white transition-colors">{l}</a>
+              {links.legal.map(({ label, href }) => (
+                <li key={label}>
+                  <a href={href} className="text-[0.95rem] text-white/65 hover:text-white transition-colors">{label}</a>
                 </li>
               ))}
             </ul>
@@ -119,8 +128,8 @@ export default function Footer() {
 
         {/* Right: legal links */}
         <div className="flex items-center gap-4 text-[11px] text-white/30">
-          <a href="#" className="hover:text-white/60 transition-colors">Privacidad</a>
-          <a href="#" className="hover:text-white/60 transition-colors">Términos</a>
+          <a href="/privacidad" className="hover:text-white/60 transition-colors">Privacidad</a>
+          <a href="/terminos" className="hover:text-white/60 transition-colors">Términos</a>
           <a href="#" className="hover:text-white/60 transition-colors">Estado</a>
         </div>
       </div>

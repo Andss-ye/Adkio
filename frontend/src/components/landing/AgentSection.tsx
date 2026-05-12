@@ -3,10 +3,10 @@ import SectionEyebrow from '../ui/SectionEyebrow';
 import { gradientStyle, monoFont } from '../../lib/styles';
 
 const steps = [
-  { fn: 'budget_validator', result: 'Presupuesto viable: $14.3/día', t: '~5s' },
-  { fn: 'audience_analyzer', result: '640K founders · CO, MX, PE, AR', t: '~15s' },
-  { fn: 'copy_generator', result: '"¿Cuántas decisiones tomás solo?"', t: '~35s' },
-  { fn: 'campaign_validator', result: '8/8 criterios Meta superados', t: '~55s' },
+  { fn: 'budget_validator', result: 'Viable · CPL bench. $15 USD/lead', t: '3.5s' },
+  { fn: 'audience_analyzer', result: '1.62M ejecutivos · LATAM', t: '11.2s' },
+  { fn: 'copy_generator', result: '"Bogotá: Tu círculo de élite te espera."', t: '19.6s' },
+  { fn: 'campaign_validator', result: '8/8 criterios Meta superados', t: '4.5s' },
 ];
 
 function CheckIcon() {
@@ -73,10 +73,11 @@ export default function AgentSection() {
             </div>
             <div className="mt-1 flex items-baseline gap-3">
               <span className="text-3xl font-semibold tracking-tight text-white">
-                &lt;1<span className="text-base ml-0.5 text-white/50">min</span>
+                ~39<span className="text-base ml-0.5 text-white/50">s</span>
               </span>
-              <span className="text-[10px] text-[#A4F4FD]">vs 3+ horas manual</span>
+              <span className="text-[10px] text-[#A4F4FD]">▼ 99.5% vs manual</span>
             </div>
+            <div className="text-[9px] text-white/30 mt-0.5">varía según el modelo</div>
           </div>
         </div>
 
