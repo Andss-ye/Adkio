@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import NoiseFilter from '@/components/ui/NoiseFilter';
 import LogoMark from '@/components/ui/LogoMark';
 import { Sparkles } from '@/components/ui/Icons';
-import { campaigns, getCampaignsCount, type Campaign, type CampaignStatus } from '@/lib/dashboard-data';
+import { type Campaign, type CampaignStatus } from '@/lib/dashboard-data';
 import Sidebar from '@/components/dashboard/Sidebar';
 import CampaignList from '@/components/dashboard/CampaignList';
 import CampaignDetail from '@/components/dashboard/CampaignDetail';
@@ -56,41 +56,37 @@ export default function DashboardPage() {
   const [view, setView] = useState<ViewKey>('campañas');
   const [statusFilter, setStatusFilter] = useState<CampaignStatus | null>(null);
   const [search, setSearch] = useState('');
-  const [selectedId, setSelectedId] = useState<string>(campaigns[0].id);
-  const [savedMap, setSavedMap] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(campaigns.map((c) => [c.id, c.saved])),
-  );
-  const [liveCampaigns, setLiveCampaigns] = useState<Campaign[]>([]);
+  const [selectedId, setSelectedId] = useState<string>('');
+  const [savedMap, setSavedMap] = useState<Record<string, boolean>>({});
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     fetch(`${BACKEND}/campaigns`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data: unknown) => {
-        if (!Array.isArray(data) || data.length === 0) return;
-        const mapped = (data as Record<string, unknown>[]).map(mapBackendCampaign);
-        setLiveCampaigns(mapped);
-        setSelectedId(mapped[0].id);
-        setSavedMap((prev) => ({ ...Object.fromEntries(mapped.map((c) => [c.id, false])), ...prev }));
+        if (Array.isArray(data) && data.length > 0) {
+          const mapped = (data as Record<string, unknown>[]).map(mapBackendCampaign);
+          setCampaigns(mapped);
+          setSelectedId(mapped[0].id);
+          setSavedMap(Object.fromEntries(mapped.map((c) => [c.id, false])));
+        }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setIsLoading(false));
   }, []);
 
-  void getCampaignsCount;
-
-  const counts = useMemo(() => {
-    const source = liveCampaigns.length > 0 ? liveCampaigns : campaigns;
-    return {
-      total: source.filter((c) => !c.archived).length,
-      saved: source.filter((c) => !c.archived && savedMap[c.id]).length,
-      active: source.filter((c) => !c.archived && c.status === 'Activa').length,
-      drafts: source.filter((c) => !c.archived && c.status === 'Borrador').length,
-      archived: source.filter((c) => c.archived).length,
-      review: source.filter((c) => !c.archived && c.status === 'Revisión').length,
-    };
-  }, [savedMap, liveCampaigns]);
+  const counts = useMemo(() => ({
+    total: campaigns.filter((c) => !c.archived).length,
+    saved: campaigns.filter((c) => !c.archived && savedMap[c.id]).length,
+    active: campaigns.filter((c) => !c.archived && c.status === 'Activa').length,
+    drafts: campaigns.filter((c) => !c.archived && c.status === 'Borrador').length,
+    archived: campaigns.filter((c) => c.archived).length,
+    review: campaigns.filter((c) => !c.archived && c.status === 'Revisión').length,
+  }), [savedMap, campaigns]);
 
   const filtered = useMemo(() => {
-    let list: Campaign[] = liveCampaigns.length > 0 ? liveCampaigns : campaigns;
+    let list = [...campaigns];
     if (view === 'archivo') { list = list.filter((c) => c.archived); }
     else {
       list = list.filter((c) => !c.archived);
@@ -104,7 +100,7 @@ export default function DashboardPage() {
       list = list.filter((c) => c.name.toLowerCase().includes(q) || c.prompt.toLowerCase().includes(q));
     }
     return list;
-  }, [view, statusFilter, search, savedMap, liveCampaigns]);
+  }, [view, statusFilter, search, savedMap, campaigns]);
 
   useEffect(() => {
     if (filtered.length === 0) return;
@@ -116,10 +112,9 @@ export default function DashboardPage() {
   const handleViewClick = (key: ViewKey) => {
     setView(key);
     setStatusFilter(null);
-    const src = liveCampaigns.length > 0 ? liveCampaigns : campaigns;
     const next = (() => {
-      if (key === 'archivo') return src.filter((c) => c.archived);
-      const base = src.filter((c) => !c.archived);
+      if (key === 'archivo') return campaigns.filter((c) => c.archived);
+      const base = campaigns.filter((c) => !c.archived);
       if (key === 'guardadas') return base.filter((c) => savedMap[c.id]);
       if (key === 'activas') return base.filter((c) => c.status === 'Activa');
       if (key === 'borradores') return base.filter((c) => c.status === 'Borrador');
@@ -153,7 +148,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Window chrome */}
-      <div className="relative z-10 h-9 flex items-center px-4 border-b border-white/10 bg-black/40 backdrop-blur-md flex-shrink-0">
+      <div className="relative z-10 h-9 flex-shrink-0 flex items-center px-4 border-b border-white/10 bg-black/40 backdrop-blur-md">
         <div className="flex gap-2">
           <button onClick={() => goTo('/')} className="w-3 h-3 rounded-full transition-opacity hover:opacity-75" style={{ background: '#ff5f57' }} />
           <span className="w-3 h-3 rounded-full" style={{ background: '#febc2e' }} />
@@ -174,22 +169,21 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Stats bar — only when real campaigns are loaded */}
-      <div className="relative z-10">
-        <StatsBar campaigns={liveCampaigns} />
+      {/* Stats bar — flex-shrink-0 so it doesn't compress the grid */}
+      <div className="relative z-10 flex-shrink-0">
+        <StatsBar campaigns={campaigns} />
       </div>
 
       {/* Main 3-column layout */}
       <div
-        className="relative z-10 flex-1 grid overflow-hidden opacity-0 animate-aura-fade-up"
+        className="relative z-10 flex-1 grid min-h-0 overflow-hidden opacity-0 animate-aura-fade-up"
         style={{ gridTemplateColumns: '260px 380px 1fr', animationDelay: '0.05s' }}
       >
         <Sidebar
           view={view}
           statusFilter={statusFilter}
           counts={counts}
-          liveCampaigns={liveCampaigns}
-          allCampaigns={campaigns}
+          campaigns={campaigns}
           onViewClick={handleViewClick}
           onStatusClick={handleStatusClick}
           onClearStatus={() => setStatusFilter(null)}
@@ -203,20 +197,30 @@ export default function DashboardPage() {
           statusFilter={statusFilter}
           view={view}
           savedMap={savedMap}
+          isLoading={isLoading}
           onSelect={setSelectedId}
           onSearchChange={setSearch}
           onSearchClear={() => setSearch('')}
         />
 
         {/* Detail panel */}
-        <div className="flex flex-col min-w-0">
-          {!selected ? (
+        <div className="flex flex-col min-w-0 min-h-0 overflow-hidden">
+          {isLoading ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="flex gap-1.5">
+                {[0, 1, 2].map((i) => (
+                  <span key={i} className="w-1.5 h-1.5 rounded-full bg-white/20 animate-pulse"
+                    style={{ animationDelay: `${i * 0.15}s` }} />
+                ))}
+              </div>
+            </div>
+          ) : !selected ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center">
               <div className="w-12 h-12 rounded-2xl liquid-glass flex items-center justify-center">
                 <Sparkles className="w-5 h-5 text-white/25" />
               </div>
               <p className="text-xs text-white/35 leading-relaxed max-w-xs">
-                Seleccioná una campaña para ver el detalle, métricas y variantes.
+                Todavía no hay campañas. Creá una desde el botón "Nueva campaña".
               </p>
             </div>
           ) : (

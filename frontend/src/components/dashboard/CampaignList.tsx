@@ -17,14 +17,15 @@ type Props = {
   statusFilter: CampaignStatus | null;
   view: string;
   savedMap: Record<string, boolean>;
+  isLoading?: boolean;
   onSelect: (id: string) => void;
   onSearchChange: (v: string) => void;
   onSearchClear: () => void;
 };
 
-export default function CampaignList({ filtered, selectedId, search, statusFilter, view, savedMap, onSelect, onSearchChange, onSearchClear }: Props) {
+export default function CampaignList({ filtered, selectedId, search, statusFilter, view, savedMap, isLoading, onSelect, onSearchChange, onSearchClear }: Props) {
   return (
-    <div className="border-r border-white/10 flex flex-col bg-black/20 backdrop-blur-md min-w-0">
+    <div className="border-r border-white/10 flex flex-col bg-black/20 backdrop-blur-md min-w-0 min-h-0 overflow-hidden">
       {/* Search */}
       <div className="h-12 border-b border-white/10 flex items-center gap-2 px-4 flex-shrink-0">
         <Search className="w-3.5 h-3.5 text-white/40 flex-shrink-0" />
@@ -62,8 +63,25 @@ export default function CampaignList({ filtered, selectedId, search, statusFilte
       </div>
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto dark-scroll min-h-[400px]">
-        {filtered.length === 0 && (
+      <div className="flex-1 overflow-y-auto dark-scroll">
+        {isLoading && (
+          <div className="flex flex-col gap-0">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="px-4 py-3 border-b border-white/5 animate-pulse">
+                <div className="flex justify-between mb-2">
+                  <div className="h-3 w-2/3 rounded bg-white/[0.06]" />
+                  <div className="h-3 w-8 rounded bg-white/[0.04]" />
+                </div>
+                <div className="h-2.5 w-4/5 rounded bg-white/[0.04] mb-2" />
+                <div className="flex gap-2">
+                  <div className="h-2 w-8 rounded bg-white/[0.04]" />
+                  <div className="h-2 w-12 rounded bg-white/[0.04]" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {!isLoading && filtered.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center gap-3 px-6 text-center">
             <div className="w-10 h-10 rounded-xl liquid-glass flex items-center justify-center">
               <Search className="w-4 h-4 text-white/25" />
@@ -75,7 +93,7 @@ export default function CampaignList({ filtered, selectedId, search, statusFilte
             </p>
           </div>
         )}
-        {filtered.map((m) => (
+        {!isLoading && filtered.map((m) => (
           <CampaignCard
             key={m.id}
             campaign={m}

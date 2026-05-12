@@ -15,8 +15,7 @@ type Props = {
   view: ViewKey;
   statusFilter: CampaignStatus | null;
   counts: { total: number; saved: number; active: number; drafts: number; archived: number; review: number };
-  liveCampaigns: Campaign[];
-  allCampaigns: Campaign[];
+  campaigns: Campaign[];
   onViewClick: (k: ViewKey) => void;
   onStatusClick: (s: CampaignStatus) => void;
   onClearStatus: () => void;
@@ -31,12 +30,11 @@ const NAV: { key: ViewKey; Icon: typeof Inbox; label: string; count: keyof Props
   { key: 'archivo', Icon: Archive, label: 'Archivo', count: 'archived' },
 ];
 
-export default function Sidebar({ view, statusFilter, counts, liveCampaigns, allCampaigns, onViewClick, onStatusClick, onClearStatus, onNew }: Props) {
-  const source = liveCampaigns.length > 0 ? liveCampaigns : allCampaigns;
-  const totalBudget = liveCampaigns.reduce((s, c) => s + (c.budget?.total ?? 0), 0);
+export default function Sidebar({ view, statusFilter, counts, campaigns, onViewClick, onStatusClick, onClearStatus, onNew }: Props) {
+  const totalBudget = campaigns.reduce((s, c) => s + (c.budget?.total ?? 0), 0);
 
   return (
-    <aside className="border-r border-white/10 bg-black/30 backdrop-blur-md flex flex-col overflow-hidden">
+    <aside className="border-r border-white/10 bg-black/30 backdrop-blur-md flex flex-col min-h-0 overflow-hidden">
       <div className="flex-1 overflow-y-auto no-scrollbar p-4 flex flex-col gap-4">
         <button
           onClick={onNew}
@@ -90,7 +88,7 @@ export default function Sidebar({ view, statusFilter, counts, liveCampaigns, all
           <div className="flex flex-col gap-0.5">
             {STATUS_LABELS.map((l) => {
               const active = statusFilter === l.name;
-              const statusCount = source.filter((c) => !c.archived && c.status === l.name).length;
+              const statusCount = campaigns.filter((c) => !c.archived && c.status === l.name).length;
               return (
                 <button
                   key={l.name}
@@ -112,27 +110,25 @@ export default function Sidebar({ view, statusFilter, counts, liveCampaigns, all
         </div>
       </div>
 
-      {/* Spend card */}
+      {/* Spend card — always real data, no mocks */}
       <div className="flex-shrink-0 p-4 border-t border-white/10">
         <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3.5">
-          {liveCampaigns.length > 0 ? (
+          <div className="text-[10px] uppercase tracking-widest text-white/40 mb-1">
+            {campaigns.length > 0 ? 'Inversión planificada' : 'Sin campañas aún'}
+          </div>
+          {campaigns.length > 0 ? (
             <>
-              <div className="text-[10px] uppercase tracking-widest text-white/40 mb-1">Inversión planificada</div>
               <div className="text-2xl font-semibold text-white tracking-tight">
                 ${Math.round(totalBudget).toLocaleString('en-US')}
               </div>
               <div className="text-[11px] text-white/50 mt-1">
-                {liveCampaigns.length} {liveCampaigns.length === 1 ? 'campaña creada' : 'campañas creadas'}
+                {campaigns.length} {campaigns.length === 1 ? 'campaña' : 'campañas'} · Meta Ads
               </div>
             </>
           ) : (
-            <>
-              <div className="text-[10px] uppercase tracking-widest text-white/40 mb-1">Gasto hoy</div>
-              <div className="text-2xl font-semibold text-white tracking-tight">
-                $1,284.<span className="text-white/40 text-base">12</span>
-              </div>
-              <div className="text-[11px] text-[#10b981] mt-1 font-medium">▲ 3.6x ROAS</div>
-            </>
+            <div className="text-sm text-white/30 mt-1">
+              Lanzá tu primera campaña →
+            </div>
           )}
           <div className="mt-3 pt-3 border-t border-white/10 grid grid-cols-2 gap-2 text-[10px]">
             <div>
@@ -140,13 +136,12 @@ export default function Sidebar({ view, statusFilter, counts, liveCampaigns, all
               <div className="text-white/85 font-medium">{counts.active}</div>
             </div>
             <div>
-              <div className="text-white/40">En revisión</div>
-              <div className="text-white/85 font-medium">{counts.review}</div>
+              <div className="text-white/40">Pausadas</div>
+              <div className="text-white/85 font-medium">{counts.total - counts.active}</div>
             </div>
           </div>
         </div>
 
-        {/* GTM Hackathon credit — subtle, professional */}
         <div className="mt-3 flex items-center justify-center gap-1.5 text-[9px] text-white/20">
           <LogoMark className="w-2.5 h-2.5 opacity-40" />
           <span>MVP · GTM Hackathon Bogotá · 36h</span>
