@@ -136,3 +136,14 @@ def list_campaigns(brand_id: Optional[str] = None, limit: int = 50) -> list[dict
     if brand_id:
         q = q.eq("brand_id", brand_id)
     return q.execute().data or []
+
+
+def delete_campaign(campaign_id: str) -> bool:
+    """Hard-delete a campaign by its Supabase UUID or Meta campaign_id. Returns True if deleted."""
+    client = _get_client()
+    # Try by Supabase row id first, then by campaign_id column (Meta format)
+    result = client.table("campaigns").delete().eq("id", campaign_id).execute()
+    if result.data:
+        return True
+    result = client.table("campaigns").delete().eq("campaign_id", campaign_id).execute()
+    return bool(result.data)

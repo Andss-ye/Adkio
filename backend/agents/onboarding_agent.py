@@ -13,7 +13,7 @@ Pesos del confidence_score:
 """
 import json
 from typing import Optional
-from backend.llm import call_llm
+from backend.llm import call_llm, MAX_TOKENS_ONBOARDING
 from backend.db.supabase_client import create_brand_config, get_brand_config
 
 # ---------- Definición de campos y sus pesos ----------
@@ -134,9 +134,9 @@ def _extract_from_conversation(history: list[dict]) -> dict:
         *history,
     ]
     try:
-        response = call_llm(messages)
+        response = call_llm(messages, max_tokens=MAX_TOKENS_ONBOARDING)
         raw = response.choices[0].message.content.strip()
-        return _parse_json(raw, {})  # fallback vacío → score=0 → agente pregunta de nuevo
+        return _parse_json(raw, {})
     except Exception:
         return {}
 
@@ -154,9 +154,9 @@ def _generate_brand_config(history: list[dict], partial: dict) -> dict:
         },
     ]
     try:
-        response = call_llm(messages)
+        response = call_llm(messages, max_tokens=MAX_TOKENS_ONBOARDING)
         raw = response.choices[0].message.content.strip()
-        return _parse_json(raw, partial)  # fallback: usar lo que ya teníamos
+        return _parse_json(raw, partial)
     except Exception:
         return partial
 

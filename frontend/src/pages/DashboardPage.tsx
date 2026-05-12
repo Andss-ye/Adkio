@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import {
   Sparkles,
   Inbox,
@@ -48,9 +49,6 @@ const STATUS_LABELS: { name: CampaignStatus; color: string }[] = [
   { name: 'Revisión', color: STATUS_COLORS.Revisión },
 ];
 
-const BACKEND: string =
-  (import.meta as { env?: { VITE_BACKEND_URL?: string } }).env?.VITE_BACKEND_URL ??
-  'http://localhost:8000';
 
 function mapBackendCampaign(b: Record<string, unknown>): Campaign {
   const status: Campaign['status'] =
@@ -112,7 +110,7 @@ export default function DashboardPage() {
 
   /* Fetch real campaigns from backend — prepend to mock data */
   useEffect(() => {
-    fetch(`${BACKEND}/campaigns`)
+    apiFetch('/campaigns')
       .then((r) => (r.ok ? r.json() : null))
       .then((data: unknown) => {
         if (!Array.isArray(data) || data.length === 0) return;
