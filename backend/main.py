@@ -338,6 +338,103 @@ async def onboarding_message(
     return OnboardingMessageResponse(conversation_id=req.conversation_id, **result)
 
 
+# ── Whitelist / Tally webhook ──────────────────────────────────────────────
+class WhitelistEntry(BaseModel):
+    email: str
+    nombre: str
+    tipo_cuenta: str = "independiente"
+    nombre_empresa: Optional[str] = None
+    whatsapp: Optional[str] = None
+    ad_spend_mensual: Optional[str] = None
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v):
+            raise ValueError("email inválido")
+        return v
+
+    @field_validator("tipo_cuenta")
+    @classmethod
+    def validate_tipo(cls, v: str) -> str:
+        if v not in ("empresa", "independiente"):
+            return "independiente"
+        return v
+
+
+def _extract_tally_field(fields: list[dict], label: str) -> Optional[str]:
+    """Busca un campo de Tally por label (case-insensitive).
+    Resuelve option IDs a texto para multiple choice / dropdown."""
+    label_lower = label.lower()
+    for f in fields:
+        if f.get("label", "").lower() != label_lower:
+            continue
+        value = f.get("value")
+        if value is None or value == "":
+            return None
+        # Multiple choice / dropdown — value es un array de IDs, resolvemos contra options
+        if isinstance(value, list):
+            if not value:
+                return None
+            options = {o.get("id"): o.get("text") for o in (f.get("options") or [])}
+            return options.get(value[0], value[0])
+        return str(value)
+    return None
+
+
+@app.post("/whitelist/tally-webhook")
+@limiter.limit("30/minute")
+async def tally_webhook(request: Request) -> dict:
+    """
+    Recibe el payload de Tally y guarda la entrada en la tabla whitelist de Supabase.
+    Tally envía: { eventId, eventType, createdAt, data: { fields: [...] } }
+    """
+    from backend.db.supabase_client import _get_client
+    supabase = _get_client()
+
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Payload inválido")
+
+    fields: list[dict] = payload.get("data", {}).get("fields", [])
+    if not fields:
+        raise HTTPException(status_code=400, detail="No se encontraron campos en el payload")
+
+    # Mapear campos del form — los labels deben coincidir exactamente con los de Tally
+    email = _extract_tally_field(fields, "Email")
+    nombre = _extract_tally_field(fields, "Nombre")
+    tipo_cuenta = _extract_tally_field(fields, "Tipo de cuenta") or "independiente"
+    nombre_empresa = _extract_tally_field(fields, "Nombre de empresa")
+    whatsapp = _extract_tally_field(fields, "WhatsApp")
+    ad_spend = _extract_tally_field(fields, "¿Cuánto gastás en ads por mes?")
+
+    if not email or not nombre:
+        raise HTTPException(status_code=422, detail="Email y nombre son requeridos")
+
+    try:
+        entry = WhitelistEntry(
+            email=email,
+            nombre=nombre,
+            tipo_cuenta=tipo_cuenta,
+            nombre_empresa=nombre_empresa,
+            whatsapp=whatsapp,
+            ad_spend_mensual=ad_spend,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    result = (
+        supabase.table("whitelist")
+        .upsert(entry.model_dump(exclude_none=True), on_conflict="email")
+        .execute()
+    )
+
+    logger.info("Whitelist entry saved: %s", entry.email)
+    return {"ok": True, "email": entry.email}
+
+
 @app.get("/brand-config/{brand_id}")
 @limiter.limit("30/minute")
 async def get_brand(request: Request, brand_id: str) -> dict:
