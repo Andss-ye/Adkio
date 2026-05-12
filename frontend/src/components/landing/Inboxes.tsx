@@ -103,7 +103,7 @@ export default function Inboxes() {
           </div>
         </div>
 
-        <div className="flex flex-col md:grid md:grid-cols-12 md:h-[560px]">
+        <div className="flex flex-col md:grid md:grid-cols-12 md:h-[640px]">
           {/* Sidebar */}
           <aside className="hidden md:flex md:col-span-3 border-r border-white/10 bg-black/30 p-4 flex-col gap-4 overflow-hidden">
             <button className="rounded-lg bg-white text-black text-xs font-semibold px-3 py-2 inline-flex items-center justify-center gap-2 hover:bg-white/90">
@@ -283,36 +283,69 @@ export default function Inboxes() {
                 </div>
               </div>
 
-              {/* Creative previews */}
+              {/* Instagram Ad Preview — real output from Adkio */}
               <div className="mt-4">
                 <div className="text-[10px] uppercase tracking-widest text-white/40 mb-2">
-                  Variantes creativas
+                  Vista previa · Instagram
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {['#00d2ff', '#A4F4FD', '#0B2551'].map((c, i) => (
+                <div
+                  className="rounded-xl overflow-hidden border border-white/10"
+                  style={{ background: '#fff', color: '#000', maxWidth: 240 }}
+                >
+                  {/* Post header */}
+                  <div className="flex items-center gap-2 px-2.5 py-2">
                     <div
-                      key={i}
-                      className="aspect-[9/12] rounded-lg overflow-hidden border border-white/10 relative"
-                      style={{ background: `linear-gradient(160deg, ${c}, #0B2551)` }}
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 text-white"
+                      style={{ background: 'linear-gradient(135deg, #00d2ff, #0B2551)' }}
                     >
-                      <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/70 to-transparent">
-                        <div className="text-[9px] font-semibold text-white leading-tight">
-                          {
-                            [
-                              'Vuelve el verano. Y 40% off.',
-                              'Un swipe. Después, verano.',
-                              'Llevá menos. Comprá mejor.',
-                            ][i]
-                          }
-                        </div>
-                        <div className="text-[8px] text-white/65 mt-0.5">Comprar ahora ›</div>
-                      </div>
-                      <div className="absolute top-1.5 left-1.5 text-[8px] font-semibold text-white/85 bg-black/40 backdrop-blur px-1.5 py-0.5 rounded">
-                        v{i + 1}
-                      </div>
+                      S
                     </div>
-                  ))}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] font-semibold leading-tight" style={{ color: '#111' }}>SummerBrand</p>
+                      <p className="text-[9px]" style={{ color: '#666' }}>Publicidad</p>
+                    </div>
+                    <div className="flex flex-col gap-[2px] px-0.5">
+                      {[0,1,2].map(i => <span key={i} className="w-[3px] h-[3px] rounded-full bg-gray-400" />)}
+                    </div>
+                  </div>
+                  {/* Image area */}
+                  <div
+                    className="relative flex items-end px-3 pb-2.5"
+                    style={{ height: 88, background: 'linear-gradient(135deg, #00d2ff 0%, #0B2551 70%)' }}
+                  >
+                    <div
+                      className="absolute inset-0 opacity-10"
+                      style={{
+                        backgroundImage: 'repeating-linear-gradient(0deg,transparent,transparent 12px,rgba(255,255,255,.3) 12px,rgba(255,255,255,.3) 13px),repeating-linear-gradient(90deg,transparent,transparent 12px,rgba(255,255,255,.3) 12px,rgba(255,255,255,.3) 13px)',
+                      }}
+                    />
+                    <p className="relative text-[11px] font-bold text-white z-10 leading-tight" style={{ textShadow: '0 1px 4px rgba(0,0,0,0.5)' }}>
+                      Vuelve el verano.<br />Y 40% off.
+                    </p>
+                  </div>
+                  {/* Body */}
+                  <div className="px-2.5 pt-2 pb-1">
+                    <p className="text-[9px] leading-snug" style={{ color: '#333' }}>
+                      Tu colección favorita de temporada, ahora con el mejor precio. Solo por tiempo limitado.
+                    </p>
+                    <button
+                      className="mt-1.5 w-full text-center text-[10px] font-semibold py-1 rounded-md"
+                      style={{ background: '#0B2551', color: '#fff' }}
+                    >
+                      Comprar ahora
+                    </button>
+                  </div>
+                  {/* Actions */}
+                  <div className="flex items-center gap-2.5 px-2.5 py-1.5 border-t border-gray-100">
+                    {/* heart, comment, send icons */}
+                    {['M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z','M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z','M22 2L11 13 M22 2L15 22 11 13 2 9 22 2'].map((d, i) => (
+                      <svg key={i} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="1.8" strokeLinecap="round">
+                        <path d={d} />
+                      </svg>
+                    ))}
+                  </div>
                 </div>
+                <span className="text-[9px] text-white/25 tracking-widest uppercase mt-1 block">Sponsored · Meta Ads</span>
               </div>
             </div>
           </div>
