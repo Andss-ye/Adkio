@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { apiFetch } from '@/lib/api';
 import NoiseFilter from '@/components/ui/NoiseFilter';
 import LogoMark from '@/components/ui/LogoMark';
 import { Sparkles } from '@/components/ui/Icons';
@@ -9,10 +10,6 @@ import CampaignDetail from '@/components/dashboard/CampaignDetail';
 import StatsBar from '@/components/dashboard/StatsBar';
 
 type ViewKey = 'campañas' | 'guardadas' | 'activas' | 'borradores' | 'archivo';
-
-const BACKEND: string =
-  (import.meta as { env?: { VITE_BACKEND_URL?: string } }).env?.VITE_BACKEND_URL ??
-  'http://localhost:8000';
 
 function mapBackendCampaign(b: Record<string, unknown>): Campaign {
   const status: Campaign['status'] =
@@ -62,7 +59,7 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${BACKEND}/campaigns`)
+    apiFetch('/campaigns')
       .then((r) => (r.ok ? r.json() : null))
       .then((data: unknown) => {
         if (Array.isArray(data) && data.length > 0) {

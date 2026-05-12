@@ -1,9 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { isBackendAlive, simulateMockStream, simulateMockLaunch } from '@/lib/mock-campaign';
-
-const BACKEND: string =
-  (import.meta as { env?: { VITE_BACKEND_URL?: string } }).env?.VITE_BACKEND_URL ??
-  'http://localhost:8000';
+import { apiFetch, BACKEND } from '@/lib/api';
 
 export type ToolStatus = 'running' | 'done' | 'error';
 
@@ -143,7 +140,7 @@ export function useCampaignStream() {
 
   /* ─── Real streaming runner ────────────────────────────── */
   const runLiveStream = useCallback(async (userPrompt: string, brandId: string) => {
-    const resp = await fetch(`${BACKEND}/campaign`, {
+    const resp = await apiFetch('/campaign', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
       body: JSON.stringify({ user_prompt: userPrompt, brand_id: brandId }),
@@ -265,7 +262,7 @@ export function useCampaignStream() {
     }
 
     try {
-      const resp = await fetch(`${BACKEND}/campaign/approve`, {
+      const resp = await apiFetch('/campaign/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan }),
