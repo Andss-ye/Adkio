@@ -1,6 +1,7 @@
 import type { Plan, StreamStatus, LaunchResult } from '@/hooks/useCampaignStream';
 import { Check, Sparkles, Globe, Users, Calendar, Plus, ChevronRight } from '@/components/ui/Icons';
 import { monoFont } from '@/lib/styles';
+import InstagramAdPreview from './InstagramAdPreview';
 
 type Props = {
   plan: Plan | null;
@@ -10,7 +11,9 @@ type Props = {
   onReset: () => void;
 };
 
-const CPL_BENCHMARK_USD = 14;
+const CPL_MIN_USD = 8;
+const CPL_MAX_USD = 25;
+const CPL_BENCHMARK_USD = 15;
 
 function fmtBig(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -225,7 +228,15 @@ export default function CampaignPreview({ plan, status, launchResult, onApprove,
       </div>
 
       <div className="flex-1 p-4 flex flex-col gap-3 overflow-y-auto no-scrollbar">
-        {/* Copy */}
+        {/* Instagram Ad Preview — WOW visual */}
+        <InstagramAdPreview
+          headline={copy.headline}
+          body={copy.body}
+          cta={copy.cta}
+          brandName="AcademiaEjecutiva LATAM"
+        />
+
+        {/* Copy text detail */}
         <div className="liquid-glass rounded-xl p-4">
           <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">
             Copy generado
@@ -309,10 +320,10 @@ export default function CampaignPreview({ plan, status, launchResult, onApprove,
               className="mt-1 text-sm font-semibold text-white tabular-nums"
               style={{ fontFamily: monoFont }}
             >
-              ${CPL_BENCHMARK_USD.toFixed(2)}
+              ${CPL_MIN_USD}–${CPL_MAX_USD}
             </p>
             <p className="text-[10px] text-white/40 mt-0.5">
-              ≈ {expectedLeads} leads esperados
+              ≈ {expectedLeads} leads · benchmark LATAM
             </p>
           </div>
         </div>
