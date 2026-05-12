@@ -3,10 +3,10 @@ import SectionEyebrow from '../ui/SectionEyebrow';
 import { gradientStyle, monoFont } from '../../lib/styles';
 
 const steps = [
-  { fn: 'budget_validator', result: 'Presupuesto viable: $14.3/día', t: '0.4s' },
-  { fn: 'audience_analyzer', result: '640K founders · CO, MX, PE, AR', t: '1.1s' },
-  { fn: 'copy_generator', result: '"¿Cuántas decisiones tomás solo?"', t: '2.3s' },
-  { fn: 'campaign_validator', result: '8/8 criterios Meta superados', t: '3.0s' },
+  { fn: 'budget_validator', result: 'Presupuesto viable: $14.3/día', t: '~5s' },
+  { fn: 'audience_analyzer', result: '640K founders · CO, MX, PE, AR', t: '~15s' },
+  { fn: 'copy_generator', result: '"¿Cuántas decisiones tomás solo?"', t: '~35s' },
+  { fn: 'campaign_validator', result: '8/8 criterios Meta superados', t: '~55s' },
 ];
 
 function CheckIcon() {
@@ -48,7 +48,7 @@ export default function AgentSection() {
           <span className="block">
             Tu campaña{' '}
             <span className="animate-shiny" style={gradientStyle}>
-              al aire en 3 segundos.
+              lista en menos de 1 minuto.
             </span>
           </span>
         </h2>
@@ -73,9 +73,9 @@ export default function AgentSection() {
             </div>
             <div className="mt-1 flex items-baseline gap-3">
               <span className="text-3xl font-semibold tracking-tight text-white">
-                3.0<span className="text-base ml-0.5 text-white/50">s</span>
+                &lt;1<span className="text-base ml-0.5 text-white/50">min</span>
               </span>
-              <span className="text-[10px] text-[#A4F4FD]">▼ 99.6%</span>
+              <span className="text-[10px] text-[#A4F4FD]">vs 3+ horas manual</span>
             </div>
           </div>
         </div>

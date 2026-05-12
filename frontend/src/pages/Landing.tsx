@@ -8,6 +8,7 @@ import FeatureTriage from '../components/landing/FeatureTriage';
 import StatusQuo from '../components/landing/StatusQuo';
 import Pricing from '../components/landing/Pricing';
 import FinalCTA from '../components/landing/FinalCTA';
+import HackathonBadge from '../components/landing/HackathonBadge';
 import Footer from '../components/landing/Footer';
 
 const BG_VIDEO =
@@ -47,6 +48,7 @@ export default function Landing() {
         <StatusQuo />
         <Pricing />
         <FinalCTA />
+        <HackathonBadge />
         <Footer />
       </div>
     </div>
