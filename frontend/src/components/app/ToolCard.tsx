@@ -2,6 +2,103 @@ import type { ToolEvent } from '@/hooks/useCampaignStream';
 import { Check } from '@/components/ui/Icons';
 import { monoFont } from '@/lib/styles';
 
+const COUNTRY_FLAG: Record<string, { flag: string; name: string }> = {
+  CO: { flag: '🇨🇴', name: 'Colombia' },
+  MX: { flag: '🇲🇽', name: 'México' },
+  PE: { flag: '🇵🇪', name: 'Perú' },
+  AR: { flag: '🇦🇷', name: 'Argentina' },
+  BR: { flag: '🇧🇷', name: 'Brasil' },
+  US: { flag: '🇺🇸', name: 'EE.UU.' },
+  CL: { flag: '🇨🇱', name: 'Chile' },
+  EC: { flag: '🇪🇨', name: 'Ecuador' },
+};
+
+function AudienceInsights({ result }: { result: Record<string, unknown> }) {
+  const paises = (result.paises as string[] | undefined) ?? [];
+  const intereses = (result.intereses as string[] | undefined) ?? [];
+  const edadMin = (result.edad_min as number | undefined) ?? 18;
+  const edadMax = (result.edad_max as number | undefined) ?? 65;
+  const tamano = result.tamano_estimado as number | undefined;
+  const exclusiones = (result.exclusiones as string[] | undefined) ?? [];
+
+  // Age bar: 18–65 scale
+  const scaleMin = 18, scaleMax = 65, scaleRange = scaleMax - scaleMin;
+  const barLeft = ((edadMin - scaleMin) / scaleRange) * 100;
+  const barWidth = ((edadMax - edadMin) / scaleRange) * 100;
+
+  return (
+    <div className="mt-3 flex flex-col gap-3">
+      {/* Countries */}
+      {paises.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {paises.map((code) => {
+            const info = COUNTRY_FLAG[code] ?? { flag: '🌎', name: code };
+            return (
+              <span
+                key={code}
+                className="text-[10px] inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-white/10 bg-white/[0.03] text-white/70"
+              >
+                <span>{info.flag}</span>
+                <span>{info.name}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Age bar */}
+      <div>
+        <div className="flex justify-between text-[9px] text-white/35 mb-1" style={{ fontFamily: monoFont }}>
+          <span>18</span>
+          <span className="text-[#00D4A8] font-semibold">{edadMin}–{edadMax} años</span>
+          <span>65+</span>
+        </div>
+        <div className="relative h-2 rounded-full bg-white/[0.06]">
+          <div
+            className="absolute top-0 h-full rounded-full"
+            style={{
+              left: `${barLeft}%`,
+              width: `${barWidth}%`,
+              background: 'linear-gradient(90deg, #00d2ff, #00D4A8)',
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Top interests */}
+      {intereses.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {intereses.slice(0, 5).map((int) => (
+            <span
+              key={int}
+              className="text-[9px] px-1.5 py-0.5 rounded"
+              style={{
+                background: 'rgba(0,212,168,0.08)',
+                border: '1px solid rgba(0,212,168,0.20)',
+                color: '#00D4A8',
+              }}
+            >
+              {int}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Reach + exclusions */}
+      <div className="flex items-center justify-between text-[9px]" style={{ fontFamily: monoFont }}>
+        {tamano && (
+          <span className="text-white/50">
+            ~<span className="text-white/75">{fmtBig(tamano)}</span> personas estimadas
+          </span>
+        )}
+        {exclusiones.length > 0 && (
+          <span className="text-white/30">−{exclusiones.slice(0, 2).join(', ')}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const TOOL_META: Record<string, { label: string; icon: string }> = {
   budget_validator: { label: 'budget_validator', icon: '$' },
   audience_analyzer: { label: 'audience_analyzer', icon: '◎' },
@@ -133,8 +230,13 @@ export default function ToolCard({ event, index }: Props) {
             <p className="mt-2 text-xs text-white/80 leading-relaxed">{event.rationale}</p>
           )}
 
-          {/* Tech pills (monospace highlights) */}
-          {pills.length > 0 && (
+          {/* Audience Insights Visual — only for audience_analyzer when done */}
+          {isDone && event.tool === 'audience_analyzer' && event.result && (
+            <AudienceInsights result={event.result as Record<string, unknown>} />
+          )}
+
+          {/* Tech pills for other tools */}
+          {pills.length > 0 && event.tool !== 'audience_analyzer' && (
             <div className="mt-3 flex flex-wrap gap-1.5">
               {pills.map((p, i) => (
                 <span
