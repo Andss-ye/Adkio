@@ -163,7 +163,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Window chrome */}
-      <div className="relative z-10 h-9 flex-shrink-0 flex items-center px-4 border-b border-white/10 bg-black/40 backdrop-blur-md">
+      <div className="relative z-30 h-9 flex-shrink-0 flex items-center px-4 border-b border-white/10 bg-black/40 backdrop-blur-md">
         <div className="flex gap-2">
           <button onClick={() => goTo('/')} className="w-3 h-3 rounded-full transition-opacity hover:opacity-75" style={{ background: '#ff5f57' }} />
           <span className="w-3 h-3 rounded-full" style={{ background: '#febc2e' }} />

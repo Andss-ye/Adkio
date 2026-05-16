@@ -108,6 +108,7 @@ def list_brand_configs() -> list[dict]:
 # ── Campaigns ──────────────────────────────────────────────────────────────
 
 _CAMPAIGN_FIELDS = {
+    "account_id",  # multitenant — quien lanzó la campaña
     "brand_id", "campaign_id", "status", "estimated_reach", "preview_url",
     "user_prompt", "copy_headline", "copy_body", "copy_cta",
     "budget_usd", "duration_days", "paises", "expected_leads", "cpl_usd",
@@ -124,8 +125,16 @@ def create_campaign_result(data: dict) -> str:
     return result.data[0]["id"]
 
 
-def list_campaigns(brand_id: Optional[str] = None, limit: int = 50) -> list[dict]:
-    """Lista campañas ordenadas por fecha descendente."""
+def list_campaigns(
+    brand_id: Optional[str] = None,
+    account_id: Optional[str] = None,
+    limit: int = 50,
+) -> list[dict]:
+    """Lista campañas ordenadas por fecha descendente.
+
+    - Si se da `account_id` → solo las del usuario (filtro multitenant fuerte).
+    - Si no hay `account_id` pero hay `brand_id` → backward-compat single-tenant.
+    """
     client = _get_client()
     q = (
         client.table("campaigns")
@@ -133,7 +142,9 @@ def list_campaigns(brand_id: Optional[str] = None, limit: int = 50) -> list[dict
         .order("created_at", desc=True)
         .limit(limit)
     )
-    if brand_id:
+    if account_id:
+        q = q.eq("account_id", account_id)
+    elif brand_id:
         q = q.eq("brand_id", brand_id)
     return q.execute().data or []
 

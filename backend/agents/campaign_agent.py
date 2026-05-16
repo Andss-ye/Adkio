@@ -444,6 +444,7 @@ async def approve_and_launch(plan: dict) -> dict:
         from backend.db.supabase_client import create_campaign_result
         kpis = campaign_result.get("kpis", {})
         await asyncio.to_thread(create_campaign_result, {
+            "account_id": plan.get("_account_id"),  # multitenant — viene del JWT vía main.py
             "brand_id": plan.get("brand_id", "demo-edu-latam"),
             "campaign_id": campaign_result.get("campaign_id"),
             "status": campaign_result.get("status"),

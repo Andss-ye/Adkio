@@ -272,7 +272,13 @@ async def approve_campaign(
     if not _campaign_agent_available:
         raise HTTPException(status_code=503, detail="Campaign agent no disponible")
 
-    result = await approve_and_launch(body.plan)
+    # Inyectamos account_id al plan para que approve_and_launch lo pase a
+    # create_campaign_result. Si no hay JWT (demo single-tenant), va None y la
+    # fila queda asociada solo al brand_id (no aparece para cuentas multitenant).
+    plan_with_account = dict(body.plan)
+    plan_with_account["_account_id"] = getattr(request.state, "account_id", None)
+
+    result = await approve_and_launch(plan_with_account)
 
     campaign_id = result.get("campaign_id", f"adkio_{int(datetime.now(timezone.utc).timestamp())}")
     _campaigns[campaign_id] = {
@@ -300,6 +306,12 @@ async def get_campaigns(
 ) -> list:
     if limit > 100:
         limit = 100
+    # Multitenant: si hay JWT, filtramos por account_id (ignoramos brand_id —
+    # cada usuario solo ve sus campañas).
+    # Single-tenant demo: sin JWT, filtramos por brand_id como antes.
+    account_id = getattr(request.state, "account_id", None)
+    if account_id:
+        return list_campaigns(account_id=account_id, limit=limit)
     return list_campaigns(brand_id=brand_id, limit=limit)
 
 
