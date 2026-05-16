@@ -25,12 +25,16 @@ def valid_creds():
 
 @pytest.fixture
 def fake_sdk():
-    """SDK falso con la misma forma del de facebook_business."""
+    """SDK falso con la misma forma del de facebook_business — soporta cadena
+    completa Campaign → AdSet → Ad."""
     sdk = MagicMock()
 
-    # AdAccount(...) devuelve un objeto con create_campaign
+    # AdAccount(...) devuelve un objeto con create_campaign + cadena ads
     account_instance = MagicMock()
     account_instance.create_campaign.return_value = {"id": "1234567890"}
+    account_instance.create_ad_set.return_value = {"id": "adset_999"}
+    account_instance.create_ad_creative.return_value = {"id": "creative_111"}
+    account_instance.create_ad.return_value = {"id": "ad_222"}
     sdk.AdAccount = MagicMock(return_value=account_instance)
 
     # Campaign(id).api_delete / .api_get / .get_insights
@@ -45,10 +49,17 @@ def fake_sdk():
     ]
     sdk.Campaign = MagicMock(return_value=campaign_instance)
 
+    # TargetingSearch.search → vacío por default (sin intereses resueltos)
+    sdk.TargetingSearch = MagicMock()
+    sdk.TargetingSearch.search.return_value = []
+
     sdk.FacebookAdsApi = MagicMock()
-    sdk.FacebookRequestError = type("FacebookRequestError", (Exception,), {
+    err_attrs = {
         "api_error_message": lambda self: "err",
-    })
+        "api_error_code": lambda self: 0,
+        "api_error_subcode": lambda self: 0,
+    }
+    sdk.FacebookRequestError = type("FacebookRequestError", (Exception,), err_attrs)
 
     return sdk
 
@@ -135,6 +146,89 @@ def test_get_campaign_handles_api_error_gracefully(valid_creds, fake_sdk):
     status = adapter.get_campaign(valid_creds, "1234567890")
     assert status.status == "UNKNOWN"
     assert status.error is not None
+
+
+def test_create_campaign_full_hierarchy_when_page_id_present(valid_creds, fake_sdk):
+    """Con page_id en creds, debe crear Campaign + AdSet + Ad."""
+    adapter = MetaAdapter(sdk_module=fake_sdk)
+    spec = CampaignSpec(
+        name="Full hierarchy",
+        objective="OUTCOME_LEADS",
+        budget_usd=200.0,
+        duration_days=7,
+        copy={"headline": "Test", "body": "...", "cta": "SIGN_UP"},
+        targeting={"paises": ["Colombia"], "edad_min": 28, "edad_max": 52},
+    )
+    result = adapter.create_campaign(valid_creds, spec)
+
+    account = fake_sdk.AdAccount.return_value
+    account.create_campaign.assert_called_once()
+    account.create_ad_set.assert_called_once()
+    account.create_ad_creative.assert_called_once()
+    account.create_ad.assert_called_once()
+
+    assert result.raw["adset_id"] == "adset_999"
+    assert result.raw["ad_id"] == "ad_222"
+    assert result.raw["creative_fallback"] is False
+    assert "AdSet" in result.rationale and "Ad" in result.rationale
+
+
+def test_create_campaign_skips_hierarchy_without_page_id(fake_sdk):
+    """Sin page_id, solo crea el shell de Campaign."""
+    no_page = MetaCreds(
+        app_id="1", app_secret="s", access_token="t", ad_account_id="act_1"
+    )
+    adapter = MetaAdapter(sdk_module=fake_sdk)
+    result = adapter.create_campaign(
+        no_page,
+        CampaignSpec(name="X", objective="OUTCOME_LEADS", budget_usd=100, duration_days=7),
+    )
+    account = fake_sdk.AdAccount.return_value
+    account.create_campaign.assert_called_once()
+    account.create_ad_set.assert_not_called()
+    assert result.raw["adset_id"] is None
+    assert "shell" in result.rationale.lower() or "page_id" in result.rationale.lower()
+
+
+def test_create_campaign_falls_back_to_creative_on_no_payment(valid_creds, fake_sdk):
+    """Si la cuenta no tiene método de pago (error code 100), devuelve
+    creative_id como ad_id y marca creative_fallback=True."""
+    account = fake_sdk.AdAccount.return_value
+
+    err = fake_sdk.FacebookRequestError()
+    # Sobrescribir el método api_error_code para simular el error de pago
+    type(err).api_error_code = lambda self: 100
+    type(err).api_error_subcode = lambda self: 1359188
+
+    account.create_ad.side_effect = err
+
+    adapter = MetaAdapter(sdk_module=fake_sdk)
+    result = adapter.create_campaign(
+        valid_creds,
+        CampaignSpec(
+            name="No pay",
+            objective="OUTCOME_LEADS",
+            budget_usd=100,
+            duration_days=7,
+            copy={"headline": "Test"},
+            targeting={"paises": ["Colombia"]},
+        ),
+    )
+    assert result.raw["creative_fallback"] is True
+    assert result.raw["ad_id"] == "creative_111"  # creative_id usado como fallback
+    assert "método de pago" in result.rationale
+
+
+def test_country_mapping_translates_names_to_iso():
+    """Helper estático: nombres LATAM se mapean a códigos ISO."""
+    codes = MetaAdapter._to_country_codes(
+        ["Colombia", "México", "PE", "Brasil", "Inexistente"]
+    )
+    assert "CO" in codes
+    assert "MX" in codes
+    assert "PE" in codes
+    assert "BR" in codes
+    assert "Inexistente" not in codes  # silenciado, no incluido
 
 
 def test_meta_creds_normalized_ad_account_id():
