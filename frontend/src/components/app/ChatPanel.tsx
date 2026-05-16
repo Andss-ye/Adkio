@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import type { StreamStatus, StreamMode } from '@/hooks/useCampaignStream';
+import type { StreamStatus, StreamMode, PlatformHint } from '@/hooks/useCampaignStream';
 import { Send, Sparkles } from '@/components/ui/Icons';
 
 type Message = { role: 'user' | 'agent'; text: string };
@@ -35,11 +35,19 @@ type Props = {
   status: StreamStatus;
   errorMsg: string | null;
   mode: StreamMode;
-  onSend: (prompt: string) => void;
+  onSend: (prompt: string, platformHint: PlatformHint) => void;
 };
+
+const PLATFORMS: { value: PlatformHint; label: string }[] = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'meta', label: 'Meta' },
+  { value: 'tiktok', label: 'TikTok' },
+  { value: 'google_ads', label: 'Google' },
+];
 
 export default function ChatPanel({ status, errorMsg, mode, onSend }: Props) {
   const [input, setInput] = useState('');
+  const [platformHint, setPlatformHint] = useState<PlatformHint>('auto');
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'agent',
@@ -105,7 +113,7 @@ export default function ChatPanel({ status, errorMsg, mode, onSend }: Props) {
     if (isStreaming) return;
     setMessages((prev) => [...prev, { role: 'user', text }]);
     setInput('');
-    onSend(text);
+    onSend(text, platformHint);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -199,6 +207,32 @@ export default function ChatPanel({ status, errorMsg, mode, onSend }: Props) {
 
       {/* Input */}
       <div className="p-3 border-t border-white/10 flex-shrink-0">
+        {/* Platform selector chips */}
+        <div className="mb-2 flex items-center gap-1.5">
+          <span className="text-[9px] uppercase tracking-widest text-white/35 mr-1">Plataforma</span>
+          {PLATFORMS.map((p) => {
+            const active = platformHint === p.value;
+            return (
+              <button
+                key={p.value}
+                onClick={() => setPlatformHint(p.value)}
+                disabled={isStreaming}
+                className={`text-[10px] font-medium px-2 py-1 rounded-md border transition-colors ${
+                  active
+                    ? 'bg-white text-black border-white'
+                    : 'border-white/[0.10] text-white/55 hover:text-white hover:border-white/25'
+                }`}
+                title={
+                  p.value === 'auto'
+                    ? 'Adkio elige la mejor plataforma'
+                    : `Forzar campaña en ${p.label}`
+                }
+              >
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
         <div className="liquid-glass rounded-xl flex items-end gap-2 p-2">
           <textarea
             value={input}
@@ -219,7 +253,9 @@ export default function ChatPanel({ status, errorMsg, mode, onSend }: Props) {
           </button>
         </div>
         <p className="mt-1.5 text-[10px] text-white/25 text-center">
-          Enter para enviar · Shift+Enter para nueva línea
+          {platformHint === 'auto'
+            ? 'Adkio elige la mejor plataforma · Enter para enviar'
+            : `Forzando ${PLATFORMS.find((p) => p.value === platformHint)?.label} · Enter para enviar`}
         </p>
       </div>
     </div>

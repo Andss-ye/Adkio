@@ -268,6 +268,7 @@ def _default_canal_for(platform: str) -> str:
 async def run_campaign_agent(
     user_prompt: str,
     brand_id: str,
+    platform_hint: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Runs the campaign agent and yields SSE events.
@@ -285,6 +286,14 @@ async def run_campaign_agent(
         return
     tool_outputs: dict = {}
 
+    hint_line = ""
+    if platform_hint in ("meta", "tiktok", "google_ads"):
+        hint_line = (
+            f"\n\nIMPORTANTE: El usuario seleccionó manualmente la plataforma '{platform_hint}'. "
+            f"Cuando llames platform_recommender, debés respetar esa elección — "
+            f"el sistema va a forzar platform={platform_hint} aunque el scoring sugiera otra."
+        )
+
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
         {
@@ -292,7 +301,7 @@ async def run_campaign_agent(
             "content": (
                 f"Marca: {brand_config['negocio_nombre']}\n"
                 f"Industria: {brand_config['negocio_industria']}\n\n"
-                f"Pedido del usuario: {user_prompt}"
+                f"Pedido del usuario: {user_prompt}{hint_line}"
             ),
         },
     ]
@@ -329,6 +338,22 @@ async def run_campaign_agent(
 
                 if tool_name == "budget_validator":
                     tool_outputs["_duracion_dias"] = tool_args.get("duracion_dias", 14)
+
+                # Override del recommender si el usuario forzó plataforma
+                if (
+                    tool_name == "platform_recommender"
+                    and platform_hint in ("meta", "tiktok", "google_ads")
+                    and result.get("platform") != platform_hint
+                ):
+                    original = result.get("platform")
+                    result["platform"] = platform_hint
+                    result["confidence"] = 1.0
+                    result["rationale"] = (
+                        f"Plataforma forzada por el usuario: **{platform_hint}**. "
+                        f"(El recomendador automático hubiera elegido {original}.)"
+                    )
+                    result["user_forced"] = True
+                    tool_outputs["platform_recommender"] = result
 
                 yield _sse("tool_result", {"tool": tool_name, "result": result})
 

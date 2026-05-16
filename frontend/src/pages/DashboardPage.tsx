@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api';
+import { isLoggedIn, getAccount } from '@/lib/auth';
 import NoiseFilter from '@/components/ui/NoiseFilter';
 import LogoMark from '@/components/ui/LogoMark';
 import { Sparkles } from '@/components/ui/Icons';
@@ -8,6 +9,8 @@ import Sidebar from '@/components/dashboard/Sidebar';
 import CampaignList from '@/components/dashboard/CampaignList';
 import CampaignDetail from '@/components/dashboard/CampaignDetail';
 import StatsBar from '@/components/dashboard/StatsBar';
+import SettingsDrawer from '@/components/dashboard/SettingsDrawer';
+import UserMenu from '@/components/dashboard/UserMenu';
 
 type ViewKey = 'campañas' | 'guardadas' | 'activas' | 'borradores' | 'archivo';
 
@@ -57,6 +60,21 @@ export default function DashboardPage() {
   const [savedMap, setSavedMap] = useState<Record<string, boolean>>({});
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Settings drawer (panel slide-over)
+  const [settingsOpen, setSettingsOpen] = useState<boolean>(
+    () => new URLSearchParams(window.location.search).get('panel') === 'settings'
+  );
+  // Auth state — re-render cuando cambie login/logout
+  const [logged, setLogged] = useState(isLoggedIn());
+  const account = getAccount();
+
+  // Re-abrir drawer si veníamos del OAuth callback
+  useEffect(() => {
+    if (sessionStorage.getItem('adkio.open_settings_after_oauth') === '1') {
+      sessionStorage.removeItem('adkio.open_settings_after_oauth');
+      setSettingsOpen(true);
+    }
+  }, []);
 
   useEffect(() => {
     apiFetch('/campaigns')
@@ -155,14 +173,20 @@ export default function DashboardPage() {
           <LogoMark className="w-3.5 h-3.5" />
           <span>Adkio — Workspace de campañas</span>
         </div>
-        <div className="ml-auto flex items-center gap-2 text-[10px] text-white/40">
-          <span className="inline-flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-3 text-[10px] text-white/40">
+          <span className="hidden md:inline-flex items-center gap-1">
             <span className="relative flex w-1.5 h-1.5">
               <span className="absolute inset-0 rounded-full animate-ping" style={{ background: '#10b981', opacity: 0.6 }} />
               <span className="relative rounded-full w-1.5 h-1.5" style={{ background: '#10b981' }} />
             </span>
             <span>Sincronizado con Meta</span>
           </span>
+          <UserMenu
+            logged={logged}
+            account={account}
+            onLogout={() => setLogged(false)}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
         </div>
       </div>
 
@@ -185,6 +209,7 @@ export default function DashboardPage() {
           onStatusClick={handleStatusClick}
           onClearStatus={() => setStatusFilter(null)}
           onNew={() => goTo('/app')}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
 
         <CampaignList
@@ -230,6 +255,8 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }

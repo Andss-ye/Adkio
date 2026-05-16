@@ -50,6 +50,8 @@ export type StreamStatus =
 
 export type StreamMode = 'live' | 'mock';
 
+export type PlatformHint = 'auto' | 'meta' | 'tiktok' | 'google_ads';
+
 export type BackendHealth = 'checking' | 'online' | 'offline';
 
 export type LaunchKpis = {
@@ -160,11 +162,15 @@ export function useCampaignStream() {
   }, []);
 
   /* ─── Real streaming runner ────────────────────────────── */
-  const runLiveStream = useCallback(async (userPrompt: string, brandId: string) => {
+  const runLiveStream = useCallback(async (userPrompt: string, brandId: string, platformHint?: PlatformHint) => {
     const resp = await apiFetch('/campaign', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify({ user_prompt: userPrompt, brand_id: brandId }),
+      body: JSON.stringify({
+        user_prompt: userPrompt,
+        brand_id: brandId,
+        platform_hint: platformHint && platformHint !== 'auto' ? platformHint : null,
+      }),
     });
 
     if (!resp.ok || !resp.body) {
@@ -223,7 +229,7 @@ export function useCampaignStream() {
 
   /* ─── Public: startStream ──────────────────────────────── */
   const startStream = useCallback(
-    async (userPrompt: string, brandId = 'demo-edu-latam') => {
+    async (userPrompt: string, brandId = 'demo-edu-latam', platformHint: PlatformHint = 'auto') => {
       reset();
       lastPromptRef.current = userPrompt;
       setStatus('streaming');
@@ -243,7 +249,7 @@ export function useCampaignStream() {
 
       setMode('live');
       try {
-        await runLiveStream(userPrompt, brandId);
+        await runLiveStream(userPrompt, brandId, platformHint);
       } catch (err) {
         /* If the live call drops mid-way, only fall back if we haven't
            emitted any events yet — otherwise surface the error. */

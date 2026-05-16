@@ -140,6 +140,8 @@ _MAX_MESSAGE_CHARS = 1000
 class CampaignRequest(BaseModel):
     user_prompt: str
     brand_id: str = "demo-edu-latam"
+    # Opcional — si el usuario elige plataforma desde la UI, el agente la respeta
+    platform_hint: Optional[str] = None
 
     @field_validator("user_prompt")
     @classmethod
@@ -159,6 +161,15 @@ class CampaignRequest(BaseModel):
         v = v.strip()
         if not re.match(r"^[a-zA-Z0-9_\-]{1,64}$", v):
             raise ValueError("brand_id inválido")
+        return v
+
+    @field_validator("platform_hint")
+    @classmethod
+    def validate_platform_hint(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        if v not in ("meta", "tiktok", "google_ads"):
+            raise ValueError("platform_hint debe ser meta, tiktok o google_ads")
         return v
 
 
@@ -237,7 +248,7 @@ async def create_campaign(
     _check_injection(body.user_prompt)
 
     async def generate():
-        async for chunk in run_campaign_agent(body.user_prompt, body.brand_id):
+        async for chunk in run_campaign_agent(body.user_prompt, body.brand_id, platform_hint=body.platform_hint):
             yield chunk
 
     return StreamingResponse(

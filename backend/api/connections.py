@@ -388,3 +388,81 @@ async def google_set_customer(request: Request, body: _SetCustomerBody) -> dict:
     if not result.data:
         raise HTTPException(status_code=404, detail="conexión google_ads no encontrada")
     return {"customer_id": customer_id, "ok": True}
+
+
+# ── Manual API key entry ───────────────────────────────────────────────────
+# Para cuando OAuth no está aprobado por el provider todavía (Meta tarda ~2
+# semanas en App Review). El usuario pega su access_token + account_id desde
+# el dashboard nativo del provider (Graph Explorer / TikTok Sandbox / Google
+# generate_user_credentials.py) y nosotros lo encriptamos como si viniera de
+# OAuth. Mismo schema en platform_connections, mismo resolver consumiéndolo.
+
+
+from typing import Any
+
+
+class _ManualConnectBody(__import__("pydantic").BaseModel):
+    access_token: str
+    provider_account_id: str
+    refresh_token: Optional[str] = None
+    extra: Optional[dict[str, Any]] = None
+
+
+_VALID_MANUAL_PLATFORMS = ("meta", "tiktok", "google_ads")
+
+
+@router.post("/{platform}/manual")
+async def manual_connect(
+    request: Request, platform: str, body: _ManualConnectBody
+) -> dict:
+    """Conecta una plataforma pegando access_token + provider_account_id manualmente.
+
+    Útil cuando el OAuth del provider está pendiente de aprobación.
+    El access_token se cifra con Fernet antes de persistir.
+    """
+    if platform not in _VALID_MANUAL_PLATFORMS:
+        raise HTTPException(status_code=400, detail=f"plataforma inválida: {platform}")
+
+    aid = _account_id(request)
+
+    access = body.access_token.strip()
+    pid = body.provider_account_id.strip()
+    if not access or not pid:
+        raise HTTPException(status_code=400, detail="access_token y provider_account_id requeridos")
+
+    # Normalización mínima por plataforma
+    if platform == "meta" and not pid.startswith("act_") and pid.isdigit():
+        pid = f"act_{pid}"
+    if platform == "google_ads":
+        pid = pid.replace("-", "")
+        if not pid.isdigit() or len(pid) != 10:
+            raise HTTPException(
+                status_code=400, detail="Google customer_id debe ser 10 dígitos"
+            )
+
+    extra = dict(body.extra or {})
+    extra["manual_entry"] = True
+    # Fallback a env globales de Adkio si vienen en config
+    if platform == "meta":
+        extra.setdefault("app_id", os.environ.get("META_APP_ID", ""))
+        extra.setdefault("app_secret", os.environ.get("META_APP_SECRET", ""))
+        extra.setdefault("page_id", os.environ.get("META_PAGE_ID"))
+    if platform == "tiktok":
+        extra.setdefault("app_id", os.environ.get("TIKTOK_APP_ID", ""))
+        extra.setdefault("app_secret", os.environ.get("TIKTOK_APP_SECRET", ""))
+    if platform == "google_ads":
+        extra.setdefault("client_id", os.environ.get("GOOGLE_OAUTH_CLIENT_ID", ""))
+        extra.setdefault("client_secret", os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", ""))
+
+    refresh_enc = encrypt_token(body.refresh_token) if body.refresh_token else None
+
+    upsert_connection(
+        account_id=aid,
+        platform=platform,
+        provider_account_id=pid,
+        access_token_encrypted=encrypt_token(access),
+        refresh_token_encrypted=refresh_enc,
+        extra=extra,
+        scopes=[],
+    )
+    return {"ok": True, "platform": platform, "provider_account_id": pid}

@@ -85,7 +85,7 @@ export default function AppPage() {
           status={status}
           errorMsg={errorMsg}
           mode={mode}
-          onSend={(prompt) => startStream(prompt)}
+          onSend={(prompt, platformHint) => startStream(prompt, 'demo-edu-latam', platformHint)}
         />
         <ReasoningPanel toolEvents={toolEvents} status={status} />
         <CampaignPreview

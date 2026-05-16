@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import LogoMark from '../ui/LogoMark';
 import AppleButton from '../ui/AppleButton';
 import { Menu } from '../ui/Icons';
+import { isLoggedIn, getAccount, logout } from '@/lib/auth';
 
 const LINKS = [
   { label: 'Producto', href: '#producto' },
@@ -75,6 +76,13 @@ function ComingSoonModal({ onClose }: { onClose: () => void }) {
 
 export default function Navbar() {
   const [showMetaModal, setShowMetaModal] = useState(false);
+  // Auth state — useEffect porque localStorage no es deterministic en SSR
+  const [logged, setLogged] = useState(false);
+  const [email, setEmail] = useState<string>('');
+  useEffect(() => {
+    setLogged(isLoggedIn());
+    setEmail(getAccount()?.email ?? '');
+  }, []);
 
   return (
     <>
@@ -105,7 +113,31 @@ export default function Navbar() {
               <MetaIcon />
               Conectar Meta
             </button>
-            <AppleButton label="Probar Adkio" href="/dashboard" />
+
+            {logged ? (
+              <>
+                <span className="text-xs text-white/45 hidden lg:inline" title={email}>
+                  {email.length > 24 ? email.slice(0, 22) + '…' : email}
+                </span>
+                <button
+                  onClick={() => { logout(); window.location.reload(); }}
+                  className="text-sm font-medium px-4 py-2 rounded-full border border-white/15 text-white/70 hover:text-white hover:border-white/30 transition-colors"
+                >
+                  Cerrar sesión
+                </button>
+                <AppleButton label="Ir al dashboard" href="/dashboard" />
+              </>
+            ) : (
+              <>
+                <a
+                  href="/login"
+                  className="text-sm font-medium px-4 py-2 rounded-full border border-white/15 text-white/70 hover:text-white hover:border-white/30 transition-colors"
+                >
+                  Iniciar sesión
+                </a>
+                <AppleButton label="Empezar gratis" href="/signup" />
+              </>
+            )}
           </div>
           <button className="md:hidden w-10 h-10 rounded-full border border-white/10 bg-white/5 flex items-center justify-center text-white/80">
             <Menu className="w-4 h-4" />
