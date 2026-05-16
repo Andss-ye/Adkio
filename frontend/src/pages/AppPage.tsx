@@ -13,6 +13,7 @@ export default function AppPage() {
     errorMsg,
     launchResult,
     mode,
+    backendHealth,
     startStream,
     approveCampaign,
     reset,
@@ -47,7 +48,36 @@ export default function AppPage() {
         <div className="absolute left-1/2 -translate-x-1/2 text-xs text-white/40">
           Adkio — Generador de campañas
         </div>
+        <div className="ml-auto flex items-center gap-1.5">
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${backendHealth === 'checking' ? 'animate-pulse' : ''}`}
+            style={{
+              background:
+                backendHealth === 'online' ? '#10b981' : backendHealth === 'offline' ? '#f59e0b' : '#6B7280',
+            }}
+          />
+          <span className="text-[10px] text-white/55">
+            {backendHealth === 'online' && 'Backend online'}
+            {backendHealth === 'offline' && 'Demo mode (backend offline)'}
+            {backendHealth === 'checking' && 'Conectando…'}
+          </span>
+        </div>
       </div>
+
+      {/* Banner si estamos en mock — explícito sobre por qué */}
+      {backendHealth === 'offline' && (
+        <div className="flex-shrink-0 px-4 py-2 border-b border-amber-500/20 bg-amber-500/[0.05] text-[11px] text-amber-200/90 flex items-center gap-2">
+          <span>⚠️</span>
+          <span>
+            <strong>Modo demo:</strong> el backend de Adkio no responde en{' '}
+            <code className="px-1 py-0.5 rounded bg-white/5">/health</code>.
+            Estás viendo una simulación local con datos hardcodeados — el flujo y los rationales son los mismos
+            que con la API real. Arrancá el backend con{' '}
+            <code className="px-1 py-0.5 rounded bg-white/5">uvicorn backend.main:app --port 8000</code>
+            {' '}para ver llamadas en vivo.
+          </span>
+        </div>
+      )}
 
       {/* 3-panel layout — min-h-0 lets flex children shrink so overflow-y-auto works inside */}
       <div className="flex-1 grid min-h-0" style={{ gridTemplateColumns: '28% 42% 30%' }}>

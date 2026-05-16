@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { isBackendAlive, simulateMockStream, simulateMockLaunch } from '@/lib/mock-campaign';
 import { apiFetch, BACKEND } from '@/lib/api';
 
@@ -50,6 +50,8 @@ export type StreamStatus =
 
 export type StreamMode = 'live' | 'mock';
 
+export type BackendHealth = 'checking' | 'online' | 'offline';
+
 export type LaunchKpis = {
   expected_leads: number;
   cpl_usd: number;
@@ -97,7 +99,26 @@ export function useCampaignStream() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [launchResult, setLaunchResult] = useState<LaunchResult | null>(null);
   const [mode, setMode] = useState<StreamMode>('live');
+  const [backendHealth, setBackendHealth] = useState<BackendHealth>('checking');
   const lastPromptRef = useRef<string>('');
+
+  /* Health check al mount + cada 30s para que el usuario vea claramente si
+     el backend está vivo. Si está offline, automáticamente caemos a mock. */
+  useEffect(() => {
+    let cancelled = false;
+    async function check() {
+      const alive = await isBackendAlive(BACKEND);
+      if (cancelled) return;
+      setBackendHealth(alive ? 'online' : 'offline');
+      if (!alive) setMode('mock');
+    }
+    check();
+    const interval = setInterval(check, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const reset = useCallback(() => {
     setToolEvents([]);
@@ -292,6 +313,7 @@ export function useCampaignStream() {
     errorMsg,
     launchResult,
     mode,
+    backendHealth,
     startStream,
     approveCampaign,
     reset,
