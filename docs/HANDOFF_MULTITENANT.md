@@ -1,94 +1,196 @@
-# Handoff Multitenant — Para Freddy
+# Handoff Multitenant — Para Freddy y su Claude
 
-> Contexto: la rama `feature/multichannel` ya tiene el core de los 3 canales
-> (Meta, TikTok, Google Ads) listo en single-tenant. Tu parte es ponerle
-> arriba el multitenant sin tocar el core de los adapters. Este doc resume
-> qué te dejé hecho, qué tenés que construir, y los puntos donde el diseño
-> ya tiene en cuenta tu trabajo.
-
----
-
-## TL;DR
-
-- El **core es stateless y tenant-agnostic** — los adapters reciben credenciales
-  por parámetro, no leen env ni DB. No los toques.
-- Lo único que cambia con multitenant es **de dónde** salen las credenciales
-  (env → tabla `platform_connections` en Supabase).
-- Tu trabajo es: schema en Supabase + `DBCredentialResolver` + middleware
-  FastAPI que extrae `account_id` del JWT + UI de OAuth.
-- Cuando termines, **tu resolver es drop-in** para el `EnvCredentialResolver`
-  que ya existe — misma interfaz, misma firma.
+> **Cómo usar este doc:** dáselo entero a tu Claude. Está escrito como brief para
+> un Claude Code que arranca cold sin contexto del repo. Está estructurado en
+> tareas atómicas (T1, T2, T3...) con criterios de aceptación claros.
+>
+> **Estado del repo cuando lo recibís:** rama `feature/multichannel` con el core
+> multichannel implementado y testeado (98 tests pasando). El agente ya soporta
+> Meta + TikTok + Google Ads en single-tenant via env vars. Tu trabajo es el
+> multitenant — agregar la capa de tenancy sin tocar el core.
 
 ---
 
-## 1. Lo que ya está hecho (no tocar)
+## TL;DR del handoff
 
-### `backend/integrations/`
-
-- `base.py` — Protocol `PlatformAdapter` + dataclasses (`CampaignSpec`, `CreateResult`, `DeleteResult`, `CampaignStatus`, `AdapterError`).
-- `credentials.py` — dataclasses `MetaCreds`, `TikTokCreds`, `GoogleAdsCreds` con método `validate()`.
-- `meta_adapter.py` — wrapper de `facebook-business` SDK. Hard-delete real.
-- `tiktok_adapter.py` — REST directo a TikTok Business API. **Soft-delete** (la API no soporta hard-delete).
-- `google_ads_adapter.py` — wrapper de `google-ads` SDK. Hard-delete real.
-
-### `backend/services/credential_resolver.py`
-
-- Protocol `CredentialResolver` con un solo método: `resolve(platform) -> Credentials | None`.
-- Impl `EnvCredentialResolver` que lee del `.env`. Esto es lo que se reemplaza con tu `DBCredentialResolver`.
-
-### Tests (42 nuevos, todos pasan)
-
-- `tests/integrations/test_contract.py` — los 3 adapters cumplen el Protocol.
-- `tests/integrations/test_{meta,tiktok,google_ads}_adapter.py` — happy path + errores + edge cases.
-- `tests/services/test_credential_resolver.py` — mapeo env → dataclass.
+- **No toques nada en `backend/integrations/` ni `backend/tools/`.** Esas son
+  mi rama. Si las cambiás, vas a tener conflictos cuando integremos.
+- Tu superficie: `backend/auth/`, `backend/middleware/`, `backend/api/connections.py`,
+  un schema SQL en Supabase, y extender `backend/services/credential_resolver.py`
+  con una clase nueva (`DBCredentialResolver`) **sin tocar la existente**.
+- Cuando termines, el switch single-tenant → multitenant es UNA línea en
+  `backend/main.py`: cambiar `EnvCredentialResolver()` por
+  `DBCredentialResolver(account_id=request.state.account_id, ...)`.
 
 ---
 
-## 2. Lo que tenés que hacer
+## Contexto crítico (5 minutos de lectura)
 
-### 2.1 Schema en Supabase
+### Qué hace Adkio
+Agente de IA que ejecuta campañas de ads desde lenguaje natural. El usuario
+escribe "quiero llenar mi evento en Bogotá", Adkio elige Meta / TikTok / Google,
+configura todo, y deja PAUSED para que el usuario apruebe en el dashboard nativo
+de la plataforma (Human-In-The-Loop).
 
-Tabla nueva, **separada** de `brand_config`. Las credenciales NO van en `brand_config`.
+### Cómo está organizado el core hoy (lo mío — read-only para vos)
+```
+backend/
+├── integrations/
+│   ├── base.py                    # Protocol PlatformAdapter + dataclasses
+│   ├── credentials.py             # MetaCreds, TikTokCreds, GoogleAdsCreds
+│   ├── meta_adapter.py            # facebook-business SDK
+│   ├── tiktok_adapter.py          # REST directo (requests)
+│   ├── google_ads_adapter.py      # google-ads SDK
+│   └── adapter_registry.py        # get_adapter(platform) -> PlatformAdapter
+├── services/
+│   └── credential_resolver.py     # Protocol + EnvCredentialResolver (single-tenant)
+├── tools/
+│   ├── platform_recommender.py    # elige plataforma según objetivo/audiencia
+│   ├── campaign_launcher.py       # crea campaña en la plataforma elegida
+│   ├── campaign_remover.py        # elimina (hard-delete Meta/Google, soft TikTok)
+│   └── ... (resto de tools)
+└── agents/
+    └── campaign_agent.py          # orquesta los tools en orden
+```
+
+**Contrato del core:** todos los tools y adapters reciben `resolver:
+CredentialResolver` como parámetro inyectable. Si tu `DBCredentialResolver`
+cumple el Protocol (`resolve(platform) -> Credentials | None`), todo el core
+funciona sin tocarlo.
+
+### Por qué este diseño
+Decisión arquitectónica deliberada: **separar el "qué plataforma" del "qué cuenta"**.
+
+- **Core (yo, mío):** sabe cómo hablarle a Meta / TikTok / Google. No sabe nada
+  de cuentas ni usuarios. Recibe credenciales por parámetro.
+- **Multitenant (vos):** sabe quién es el usuario y qué cuenta tiene conectada.
+  Resuelve credenciales desde la DB y se las pasa al core.
+
+Eso significa que vos podés trabajar en multitenant sin tocar mi código y yo
+puedo cambiar implementaciones internas sin afectar tu trabajo.
+
+---
+
+## Tareas (en orden)
+
+### T1 — Auth + tabla `accounts`
+
+**Qué hacer:**
+1. Diseñar la tabla `accounts` en Supabase (id, email, plan, created_at).
+2. Implementar signup/login con JWT. Token debe incluir `account_id` en el payload.
+3. Endpoints: `POST /auth/signup`, `POST /auth/login`, `POST /auth/refresh`.
+
+**Stack sugerido:** Supabase Auth (built-in) + tu propia tabla `accounts` que
+referencia `auth.users(id)`. NO uses una librería pesada como FastAPI-Users —
+el equipo prefiere stack mínimo.
+
+**Criterio de aceptación:**
+- `curl -X POST /auth/login -d ...` devuelve un JWT.
+- El JWT decodificado contiene `account_id` (UUID).
+- Existe una fila en `accounts` por usuario registrado.
+
+---
+
+### T2 — Tabla `platform_connections` con RLS
+
+**Qué hacer:** crear esta tabla en Supabase:
 
 ```sql
 create table platform_connections (
     id uuid primary key default gen_random_uuid(),
     adkio_account_id uuid not null references accounts(id) on delete cascade,
     platform text not null check (platform in ('meta', 'tiktok', 'google_ads')),
-    provider_account_id text not null,         -- act_XXX | advertiser_id | customer_id
+    provider_account_id text not null,   -- act_XXX | advertiser_id | customer_id
     access_token_encrypted text not null,
     refresh_token_encrypted text,
     token_expires_at timestamptz,
-    extra_jsonb jsonb default '{}',            -- page_id (meta), login_customer_id (google), etc
+    extra_jsonb jsonb default '{}',      -- page_id, login_customer_id, app_id, etc
     scopes text[] default '{}',
     connected_at timestamptz default now(),
     last_validated_at timestamptz,
-    unique (adkio_account_id, platform)        -- 1 cuenta por plataforma por Adkio account
+    unique (adkio_account_id, platform)  -- 1 cuenta por plataforma por Adkio account
 );
+
+-- RLS obligatorio
+alter table platform_connections enable row level security;
+
+create policy "users see only their account's connections"
+  on platform_connections for all
+  using (adkio_account_id = (auth.jwt() ->> 'account_id')::uuid);
 ```
 
-**Decisión clave del plan:** `UNIQUE(adkio_account_id, platform)` — un Adkio account conecta máximo 1 Meta + 1 TikTok + 1 Google Ads. Multi-cuenta queda fuera del MVP.
+**Por qué `unique(adkio_account_id, platform)`:** decisión de producto. Cada
+Adkio account conecta máximo 1 Meta + 1 TikTok + 1 Google Ads. Multi-cuenta
+queda fuera del MVP (ver `docs/PLAN_MULTI_CHANNEL.md`).
 
-**Cifrado:** tokens van encriptados con clave del backend (no en el JWT). Sugerencia: `cryptography.fernet` con una key en env (`PLATFORM_TOKENS_ENC_KEY`).
+**Por qué `extra_jsonb`:** cada plataforma tiene campos extra (page_id,
+login_customer_id, app_id/secret) que no quiero meter como columnas para evitar
+migrations. Mi `DBCredentialResolver` los lee de ahí.
 
-**`extra_jsonb`** existe porque cada plataforma tiene campos extra (page_id, login_customer_id, app_id/secret) que no quiero meter como columnas para evitar migrations. El `DBCredentialResolver` los lee de ahí.
+**Criterio de aceptación:**
+- Tabla creada en Supabase con la constraint y RLS activa.
+- `select * from platform_connections` desde un cliente con JWT solo devuelve
+  las filas del account_id del JWT (probarlo con dos cuentas distintas).
 
-### 2.2 `DBCredentialResolver`
+---
 
-Cumple el mismo Protocol que `EnvCredentialResolver`. Mirá el resolver actual como referencia: `backend/services/credential_resolver.py`.
+### T3 — Cifrado de tokens (Fernet)
+
+**Qué hacer:** crear `backend/security/token_crypto.py` con dos funciones:
 
 ```python
-# backend/services/credential_resolver.py (agregar al mismo archivo)
+from cryptography.fernet import Fernet
+import os
+
+def _fernet() -> Fernet:
+    key = os.environ["PLATFORM_TOKENS_ENC_KEY"]
+    return Fernet(key.encode())
+
+def encrypt_token(plain: str) -> str:
+    return _fernet().encrypt(plain.encode()).decode()
+
+def decrypt_token(ciphered: str) -> str:
+    return _fernet().decrypt(ciphered.encode()).decode()
+```
+
+Agregá a `.env.example`:
+```bash
+# Generar con: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+PLATFORM_TOKENS_ENC_KEY=
+```
+
+**Criterio de aceptación:**
+- `decrypt_token(encrypt_token("hola")) == "hola"`.
+- Si `PLATFORM_TOKENS_ENC_KEY` no está, falla con error claro al primer uso.
+
+---
+
+### T4 — `DBCredentialResolver` (DROP-IN para mi `EnvCredentialResolver`)
+
+**Importante:** **agregalo al archivo existente** `backend/services/credential_resolver.py`,
+**no lo crees en archivo nuevo**. Está pensado para convivir con `EnvCredentialResolver`.
+
+**Esqueleto listo para que tu Claude lo complete:**
+
+```python
+# backend/services/credential_resolver.py — al final del archivo, no tocar lo existente
+
+from backend.security.token_crypto import decrypt_token
+
 
 class DBCredentialResolver:
-    """Multitenant: lee credenciales de Supabase filtrando por account_id."""
+    """Multitenant: lee credenciales de platform_connections en Supabase
+    filtrando por account_id. Cumple el Protocol CredentialResolver — es
+    drop-in para EnvCredentialResolver."""
 
-    def __init__(self, account_id: str, supabase_client, encryption_key: bytes):
+    def __init__(self, account_id: str, supabase_client):
         self._account_id = account_id
         self._db = supabase_client
-        self._fernet = Fernet(encryption_key)
 
     def resolve(self, platform: str) -> Optional[PlatformCreds]:
+        if platform not in _VALID_PLATFORMS:
+            raise ValueError(f"plataforma inválida: {platform!r}")
+
         row = (
             self._db.table("platform_connections")
             .select("*")
@@ -100,13 +202,14 @@ class DBCredentialResolver:
         )
         if not row:
             return None
-        access_token = self._fernet.decrypt(row["access_token_encrypted"].encode()).decode()
+
+        access_token = decrypt_token(row["access_token_encrypted"])
         extra = row.get("extra_jsonb") or {}
 
         if platform == "meta":
             return MetaCreds(
-                app_id=extra.get("app_id", ""),
-                app_secret=extra.get("app_secret", ""),
+                app_id=extra.get("app_id", os.environ.get("META_APP_ID", "")),
+                app_secret=extra.get("app_secret", os.environ.get("META_APP_SECRET", "")),
                 access_token=access_token,
                 ad_account_id=row["provider_account_id"],
                 page_id=extra.get("page_id"),
@@ -120,199 +223,376 @@ class DBCredentialResolver:
                 sandbox=extra.get("sandbox", False),
             )
         if platform == "google_ads":
-            refresh_token = self._fernet.decrypt(
-                row["refresh_token_encrypted"].encode()
-            ).decode()
+            refresh_token = decrypt_token(row["refresh_token_encrypted"]) if row.get("refresh_token_encrypted") else ""
             return GoogleAdsCreds(
-                developer_token=extra.get("developer_token", ""),
-                client_id=extra.get("client_id", ""),
-                client_secret=extra.get("client_secret", ""),
+                # developer_token es de Adkio (no del usuario) — viene de env
+                developer_token=os.environ.get("ADKIO_GOOGLE_ADS_DEVELOPER_TOKEN", ""),
+                client_id=extra.get("client_id", os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")),
+                client_secret=extra.get("client_secret", os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "")),
                 refresh_token=refresh_token,
                 customer_id=row["provider_account_id"],
                 login_customer_id=extra.get("login_customer_id"),
             )
+        return None
 ```
 
-Lo importante: **misma firma que `EnvCredentialResolver`**. Los tools/agente que reciben un `CredentialResolver` no saben ni les importa de dónde sale.
+**Notas para tu Claude:**
 
-### 2.3 Middleware FastAPI
+- `app_id` y `app_secret` de Meta son globales de Adkio (nuestra app de Meta).
+  Vienen de env, no del usuario. El usuario aporta `access_token` (su token de
+  ads) y `ad_account_id`.
+- Lo mismo con Google: `developer_token` es de Adkio (variable global), el usuario
+  aporta `refresh_token` y `customer_id`.
+- TikTok: `app_id` y `app_secret` también son de Adkio (nuestra app). El usuario
+  aporta `access_token` y `advertiser_id`.
+- Importá los tipos `MetaCreds`, `TikTokCreds`, `GoogleAdsCreds`, `PlatformCreds`,
+  `_VALID_PLATFORMS` desde lo que ya está en el archivo. NO los redefinas.
+
+**Tests:** crear `tests/services/test_db_credential_resolver.py` mockeando
+`supabase_client`. Cubrir: cuenta sin conexión devuelve `None`, conexión válida
+devuelve el dataclass correcto con tokens desencriptados, RLS no se testea acá
+(eso es responsabilidad de Supabase).
+
+**Criterio de aceptación:**
+- `isinstance(DBCredentialResolver(...), CredentialResolver)` → True.
+- Test que mockea Supabase, encripta un token, llama `resolve("meta")`, y verifica
+  que devuelve un `MetaCreds` con el token desencriptado correcto.
+
+---
+
+### T5 — Middleware FastAPI para inyectar `account_id`
+
+**Qué hacer:** crear `backend/middleware/tenant.py`:
 
 ```python
-# backend/middleware/tenant.py (archivo nuevo)
-
 from fastapi import Request, HTTPException
+from jose import jwt, JWTError
+import os
+
+JWT_SECRET = os.environ["JWT_SECRET"]
 
 async def tenant_middleware(request: Request, call_next):
-    # Extraer account_id del JWT (auth ya implementada para multitenant)
-    account_id = get_account_id_from_jwt(request)
-    if not account_id:
-        raise HTTPException(401, "missing account context")
-    request.state.account_id = account_id
+    # Saltar para endpoints públicos
+    public_paths = ("/auth/login", "/auth/signup", "/auth/refresh", "/docs", "/openapi.json", "/health")
+    if any(request.url.path.startswith(p) for p in public_paths):
+        return await call_next(request)
+
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(401, "missing bearer token")
+
+    try:
+        payload = jwt.decode(auth[7:], JWT_SECRET, algorithms=["HS256"])
+        request.state.account_id = payload["account_id"]
+    except (JWTError, KeyError):
+        raise HTTPException(401, "invalid token")
+
     return await call_next(request)
 ```
 
-Luego en el agente / tools:
+Registralo en `backend/main.py`:
+```python
+from backend.middleware.tenant import tenant_middleware
+app.middleware("http")(tenant_middleware)
+```
+
+**Criterio de aceptación:**
+- Request sin JWT a `/campaign` → 401.
+- Request con JWT inválido → 401.
+- Request con JWT válido → `request.state.account_id` está poblado y la request pasa.
+
+---
+
+### T6 — OAuth flows por plataforma
+
+Tres endpoints, uno por plataforma. Estructura idéntica.
+
+**T6.1 — `POST /connect/meta`**
+
+Redirige a Facebook OAuth. Callback: `GET /connect/meta/callback?code=...`
+1. Intercambia `code` por `access_token` (Graph API `/oauth/access_token`).
+2. Intercambia el short-lived por long-lived (60 días).
+3. Llama `GET /me/adaccounts` para obtener las cuentas disponibles.
+4. Si el usuario tiene varias → modal de selección en frontend.
+5. Encripta token, upsertea en `platform_connections` con
+   `platform='meta'`, `provider_account_id=act_XXX`,
+   `extra_jsonb={"page_id": "...", "app_id": "...", "app_secret": "..."}`.
+6. Redirige al frontend con éxito.
+
+Scopes Meta: `ads_management`, `ads_read`, `pages_manage_ads`, `pages_read_engagement`.
+
+**T6.2 — `POST /connect/tiktok`**
+
+Mismo patrón. Endpoint OAuth:
+`https://business-api.tiktok.com/portal/auth?app_id=...&redirect_uri=...&state=...`.
+Después del callback, llamada a
+`POST /open_api/v1.3/oauth2/access_token/` con `auth_code`.
+
+Scope: "Ads Management".
+
+`provider_account_id` = el `advertiser_id` que el usuario selecciona.
+
+**T6.3 — `POST /connect/google_ads`**
+
+OAuth2 estándar de Google: `https://accounts.google.com/o/oauth2/v2/auth`.
+Scope: `https://www.googleapis.com/auth/adwords`.
+
+`provider_account_id` = el `customer_id` (10 dígitos, sin guiones).
+Encripta también el `refresh_token` (Google no expira los refresh tokens).
+
+**Validación post-OAuth:** después de guardar las credenciales, llamá al adapter
+correspondiente con un get/list para verificar que funcionan:
 
 ```python
-# Hoy en main.py el resolver es global. Con multitenant:
+from backend.integrations.adapter_registry import get_adapter
+from backend.services.credential_resolver import DBCredentialResolver
+
+resolver = DBCredentialResolver(account_id=current_user.account_id, supabase_client=supabase)
+creds = resolver.resolve("meta")
+adapter = get_adapter("meta")
+# Validación: leer un recurso conocido. Si falla, marcar last_validated_at=null.
+```
+
+**Criterio de aceptación:**
+- Conectar Meta crea una fila en `platform_connections` con tokens cifrados.
+- Conectar la misma plataforma de nuevo reemplaza la fila (gracias al UNIQUE constraint).
+- Hay un endpoint `DELETE /connect/{platform}` que borra la fila.
+- Hay un endpoint `GET /connect/status` que devuelve qué plataformas tiene conectadas el account actual.
+
+---
+
+### T7 — Wire del resolver en `main.py`
+
+**ESTE ES EL SWITCH FINAL.** Es 1 línea (más imports).
+
+Encontrá donde el agente usa el resolver. Hoy es algo así (en `main.py` o en
+`backend/agents/campaign_agent.py`):
+
+```python
+# ANTES (single-tenant)
+from backend.services.credential_resolver import EnvCredentialResolver
+resolver = EnvCredentialResolver()
+```
+
+Cambialo a esto:
+
+```python
+# DESPUÉS (multitenant)
+from backend.services.credential_resolver import DBCredentialResolver
+from backend.db.supabase_client import get_supabase
 resolver = DBCredentialResolver(
     account_id=request.state.account_id,
     supabase_client=get_supabase(),
-    encryption_key=os.environ["PLATFORM_TOKENS_ENC_KEY"].encode(),
 )
 ```
 
-### 2.4 OAuth flows por canal
+El resolver se construye **por request** (no global) porque depende del
+`account_id` que pone el middleware.
 
-3 endpoints `/connect/{platform}/callback`. Cada uno:
-
-1. Recibe `code` del OAuth provider.
-2. Lo intercambia por access_token + refresh_token.
-3. Llama al adapter para validar (`adapter.get_campaign` con un id dummy o un `me` endpoint).
-4. Cifra y upsertea en `platform_connections` (la unique constraint hace que reconectar reemplace).
-5. Redirige al frontend.
-
-Endpoints OAuth de referencia:
-- **Meta:** `https://www.facebook.com/v21.0/dialog/oauth?...` — scopes: `ads_management`, `ads_read`, `pages_read_engagement`, `pages_manage_ads`.
-- **TikTok:** `https://business-api.tiktok.com/portal/auth?...` — scope: `Ads Management`.
-- **Google:** `https://accounts.google.com/o/oauth2/v2/auth?...` — scope: `https://www.googleapis.com/auth/adwords`.
-
-### 2.5 UI de Settings
-
-3 botones "Conectar Meta / TikTok / Google Ads" + estado actual + botón "Desconectar" (que hace DELETE en `platform_connections`).
+**Criterio de aceptación:**
+- Un usuario que conectó Meta puede lanzar una campaña en su Meta.
+- Otro usuario sin Meta conectado recibe error claro ("plataforma no conectada")
+  o el flujo cae al mock — ambos son aceptables según producto.
+- Dos usuarios distintos pueden lanzar campañas simultáneamente sin que se
+  mezclen las credenciales (ver gotcha 8.1 abajo si Meta tiene problemas).
 
 ---
 
-## 3. Cosas a tener en cuenta (gotchas)
+### T8 — UI de Settings (frontend)
 
-### 3.1 Meta SDK es global (NO thread-safe entre tenants)
+3 botones de "Conectar Meta / TikTok / Google Ads" en una página de Settings.
+Cada uno:
+- Hace `POST /connect/{platform}` → redirige al OAuth de la plataforma.
+- Después del callback, muestra estado conectado/desconectado.
+- Botón "Desconectar" que llama `DELETE /connect/{platform}`.
 
-`facebook_business.api.FacebookAdsApi.init(...)` setea una sesión **global** del proceso. Si dos requests de cuentas distintas llegan simultáneos, el segundo pisa al primero.
+El frontend está en `frontend/src/`. Tu Claude puede mirar el `Settings.tsx`
+existente o crear uno nuevo. Stack: Vite + React + Tailwind, sin shadcn por defecto.
 
-**Soluciones (de menos a más laboriosa):**
+---
 
-1. **Lock global por request** — serializás llamadas a Meta. Simple, pero serializa todo el throughput.
-2. **`FacebookAdsApi.set_default_api(custom_api_instance)` por request** — la lib permite construir instancias separadas. Esto es lo que recomiendo.
-3. **Reemplazar el SDK por HTTP directo** (como hicimos con TikTok). Más laburo pero elimina el problema. Roadmap.
+## Gotchas críticos
 
-Mirá `backend/integrations/meta_adapter.py:_init_api` — ese método es el único punto que necesita refactor para concurrencia multitenant.
+### 8.1 Meta SDK es global (NO thread-safe entre tenants)
 
-### 3.2 TikTok soft-delete
+`facebook_business.api.FacebookAdsApi.init(...)` setea una sesión **global del
+proceso**. Si llegan dos requests de cuentas distintas simultáneos, el segundo
+pisa al primero.
 
-La UI tiene que ser honesta. El plan ya recomienda label "Eliminar (desactiva en TikTok)". El `DeleteResult` te devuelve `soft_delete=True` y un `rationale` listo para mostrar en el panel. **No mientas al usuario** — si lo descubre, perdés confianza.
+**Mi adapter** (`backend/integrations/meta_adapter.py`) ya llama `init()` por
+cada request, pero por la naturaleza global del SDK eso no resuelve la
+concurrencia. Soluciones, de menos a más laburo:
 
-### 3.3 Google Ads requiere developer_token aprobado
+1. **Aceptarlo y serializar requests a Meta con un lock global.** Throughput
+   bajo pero seguro. Sirve para MVP con pocos usuarios.
+2. **Usar `FacebookAdsApi` instances explícitas** y pasarlas a cada llamada del
+   SDK. La lib lo soporta pero requiere refactor de `meta_adapter.py`.
+3. **Reemplazar SDK por HTTP directo** (como hicimos con TikTok). Roadmap.
 
-El `developer_token` se obtiene del Google Ads Manager Center. En desarrollo viene "test only" y solo puede operar contra cuentas de test. Para producción hay que aplicar a Google y esperar aprobación (~2 semanas).
+**Recomendación:** opción 1 para MVP. Cuando llegue tracción, opción 2 y avisame
+para que refactorice el adapter.
 
-**Implicación:** durante onboarding de un usuario nuevo, el `developer_token` es nuestro (Adkio), no del usuario. Solo el `refresh_token` y `customer_id` son del usuario. Por eso en `extra_jsonb` puede vivir el `developer_token` como fallback, pero idealmente lo lees de un env var de Adkio:
+### 8.2 TikTok soft-delete
+
+TikTok no permite hard-delete vía API. Mi `campaign_remover` devuelve
+`soft_delete=True` y un `rationale` listo para mostrar.
+
+**Tu frontend tiene que ser honesto:** label recomendado del botón:
+`"Eliminar (desactiva en TikTok)"`. Si decís solo "Eliminar" y después el
+usuario ve la campaña como DISABLE en TikTok Ads Manager, perdés confianza.
+
+### 8.3 Google Ads `developer_token` aprobado
+
+El `developer_token` se obtiene del Google Ads Manager Center. En desarrollo
+viene "test only" y solo puede operar contra cuentas de test. Para producción
+hay que aplicar a Google y esperar aprobación (~2 semanas).
+
+**Implicación:** el `developer_token` es **nuestro** (Adkio), no del usuario.
+Solo `refresh_token` y `customer_id` son del usuario. Por eso en `DBCredentialResolver`
+lo leemos de env (`ADKIO_GOOGLE_ADS_DEVELOPER_TOKEN`), no de `extra_jsonb`.
+
+### 8.4 Refresh tokens — quién los rota
+
+| Plataforma | Access token TTL | Refresh token TTL | Rotación |
+|---|---|---|---|
+| Meta | ~60 días (long-lived) | N/A | Cron antes que expire |
+| Google | ~1 hora | No expira | SDK lo hace automático en cada llamada |
+| TikTok | 24 horas | ~365 días | Cron antes que expire |
+
+**Recomendación:** un cron diario que mire `token_expires_at < now() + 7 days`
+y refresque. Lo agregás después del MVP.
+
+### 8.5 RLS — testealo de verdad
+
+No confíes en que la query con `eq("account_id", X)` es suficiente. Activá
+RLS en Supabase y probá con un cliente que tenga JWT de otro account. Si podés
+leer la fila, hay un bug.
+
+---
+
+## Punto de sincronización conmigo
+
+**Vos mergeás primero contra `main`** con:
+- Schema + RLS de `platform_connections`
+- `accounts` + auth
+- `DBCredentialResolver` (en el mismo archivo que `EnvCredentialResolver`)
+- Middleware tenant
+- Endpoints OAuth + Settings UI
+- T7: switch `EnvCredentialResolver` → `DBCredentialResolver` en `main.py`
+
+**Yo rebaseo `feature/multichannel`** después de tu merge. Mi rama no cambia
+nada de lo tuyo, solo activa el wire en el agente. Cero conflictos esperados.
+
+**Archivos que vos tocás** (NO yo):
+- `backend/auth/*` (nuevo)
+- `backend/middleware/*` (nuevo)
+- `backend/api/connections.py` (nuevo)
+- `backend/security/token_crypto.py` (nuevo)
+- `backend/services/credential_resolver.py` (extensión — agregás `DBCredentialResolver` AL FINAL)
+- `backend/main.py` (1 línea de switch + middleware register)
+- `frontend/src/pages/Settings.tsx` (UI conexiones)
+- Migración SQL en Supabase
+
+**Archivos que YO toco** (NO vos):
+- `backend/integrations/*` (todos)
+- `backend/tools/*` (todos)
+- `backend/agents/campaign_agent.py`
+
+---
+
+## Smoke test que tu Claude puede correr para validar todo end-to-end
+
+`scripts/smoke_multitenant.py`:
 
 ```python
-developer_token=os.environ["ADKIO_GOOGLE_ADS_DEVELOPER_TOKEN"]
-```
-
-Decidí guardarlo en `extra_jsonb` por flexibilidad, pero hablalo con el equipo — puede ser global.
-
-### 3.4 Refresh tokens — quién los rota
-
-- **Meta:** los access tokens de larga duración duran ~60 días. Hay que refrescar antes que expiren. La columna `token_expires_at` está pensada para esto.
-- **Google:** el `refresh_token` no expira (salvo revocación). El `access_token` se regenera con cada llamada via SDK. No problem.
-- **TikTok:** los access tokens duran 24 horas; el refresh token dura ~365 días. Necesitás un job que los rote.
-
-Sugerencia: un cron diario que mire `token_expires_at < now() + 7 days` y refresque.
-
-### 3.5 RLS en Supabase
-
-Activar Row Level Security en `platform_connections`:
-
-```sql
-alter table platform_connections enable row level security;
-
-create policy "users see only their account's connections"
-  on platform_connections for all
-  using (adkio_account_id = (auth.jwt() ->> 'account_id')::uuid);
-```
-
-Sin esto, un bug en el backend puede leer credenciales de otro tenant.
-
-### 3.6 El agente / tools
-
-Los tools `campaign_launcher` y `campaign_remover` (cuando los refactoricemos hacia el adapter pattern, ver punto 4) van a recibir `resolver: CredentialResolver` por DI. Ejemplo:
-
-```python
-def campaign_launcher(canal, copy, targeting, budget, duracion_dias, resolver):
-    creds = resolver.resolve(canal)
-    if not creds:
-        return {"error": f"Canal {canal} no conectado", "rationale": "..."}
-    adapter = ADAPTERS[canal]
-    spec = CampaignSpec(...)
-    result = adapter.create_campaign(creds, spec)
-    return {...}
-```
-
-Tu middleware inyecta el resolver con `account_id` poblado. El tool no sabe nada del tenant.
-
----
-
-## 4. Lo que NO está hecho todavía (pero tampoco tu pega)
-
-- **Refactor del tool `campaign_launcher`** para que use los nuevos adapters en vez de llamar directamente a `meta_ads.py`. Lo hago yo (Andrew) después de tu integración, porque toca también el flow del agente.
-- **Tool `campaign_remover`** con doble confirmación y rationale-aware del soft-delete TikTok. Mismo plan: yo lo agarro después.
-- **Frontend de panel de razonamiento** que muestre `rationale` del `DeleteResult` (incluyendo el disclaimer de soft-delete). UI/UX del equipo de frontend.
-
----
-
-## 5. Punto de sincronización
-
-Cuando tu rama esté lista, hacemos merge así:
-
-1. Tu PR mergea primero contra `main` (schema + DBCredentialResolver + middleware + OAuth).
-2. Yo rebaseo `feature/multichannel` y agrego un PR que cambia `EnvCredentialResolver` por `DBCredentialResolver` en `main.py` (1 línea) + refactoriza `campaign_launcher` para usar adapters + agrega `campaign_remover`.
-
-**Cero conflictos esperados** porque tocamos archivos distintos:
-- Vos: `backend/middleware/`, `backend/auth/`, `backend/services/credential_resolver.py` (ampliación), schema SQL, `backend/api/connections.py`.
-- Yo: `backend/integrations/` (ya está), `backend/tools/campaign_launcher.py`, `backend/tools/campaign_remover.py`, `backend/main.py` (1 línea del resolver).
-
----
-
-## 6. Cómo probar tu trabajo sin esperarme
-
-Mientras armás multitenant, podés validar todo el stack OAuth → DB → adapter sin esperar a que yo refactorice los tools. Test manual:
-
-```python
-# scripts/test_multitenant_creds.py
+"""
+Smoke test: conectar una cuenta de Meta vía DB, lanzar una campaña.
+Requiere: PLATFORM_TOKENS_ENC_KEY y una fila en platform_connections.
+"""
+import os
+from backend.security.token_crypto import encrypt_token
 from backend.services.credential_resolver import DBCredentialResolver
-from backend.integrations.meta_adapter import MetaAdapter
+from backend.db.supabase_client import get_supabase
+from backend.integrations.adapter_registry import get_adapter
 from backend.integrations.base import CampaignSpec
 
-resolver = DBCredentialResolver(account_id="<algun account_id de la DB>", ...)
-creds = resolver.resolve("meta")
-assert creds is not None, "Conectá Meta primero via OAuth"
+ACCOUNT_ID = "..."  # un account_id real de la DB
 
-adapter = MetaAdapter()
+# 1. Insertar credenciales encriptadas (simulando OAuth callback)
+db = get_supabase()
+db.table("platform_connections").upsert({
+    "adkio_account_id": ACCOUNT_ID,
+    "platform": "meta",
+    "provider_account_id": "act_TU_CUENTA_DE_TEST",
+    "access_token_encrypted": encrypt_token("TU_ACCESS_TOKEN_DE_META_TEST"),
+    "extra_jsonb": {
+        "app_id": os.environ["META_APP_ID"],
+        "app_secret": os.environ["META_APP_SECRET"],
+        "page_id": os.environ["META_PAGE_ID"],
+    },
+}).execute()
+
+# 2. Resolver lee + desencripta
+resolver = DBCredentialResolver(account_id=ACCOUNT_ID, supabase_client=db)
+creds = resolver.resolve("meta")
+assert creds is not None, "Resolver no encontró las credenciales"
+
+# 3. Adapter crea campaña en PAUSED
+adapter = get_adapter("meta")
 result = adapter.create_campaign(
     creds,
-    CampaignSpec(name="Test Multitenant", objective="OUTCOME_LEADS", budget_usd=50, duration_days=3),
+    CampaignSpec(
+        name="Smoke test multitenant",
+        objective="OUTCOME_LEADS",
+        budget_usd=50,
+        duration_days=3,
+    ),
 )
-print(result.campaign_id, result.rationale)
+print(f"OK: {result.campaign_id} en estado {result.status}")
+print(f"Rationale: {result.rationale}")
 ```
 
-Si esto corre y crea una campaña en PAUSED en la cuenta correcta, tu integración está OK.
+Si esto crea una campaña real en PAUSED en la cuenta de test → tu integración
+multitenant funciona y mergeable.
 
 ---
 
-## 7. Variables de entorno nuevas que vas a necesitar
+## Variables de entorno nuevas
 
-Agregar al `.env.example`:
+Agregar al `.env.example` y a la config de Railway:
 
 ```bash
-# Multitenant
-PLATFORM_TOKENS_ENC_KEY=          # Fernet key — generar con: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-ADKIO_GOOGLE_ADS_DEVELOPER_TOKEN= # nuestro dev token aprobado por Google
+# Auth
+JWT_SECRET=                          # openssl rand -hex 32
+
+# Cifrado de tokens
+PLATFORM_TOKENS_ENC_KEY=             # python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+# Google Ads — developer_token global de Adkio
+ADKIO_GOOGLE_ADS_DEVELOPER_TOKEN=
+
+# Google OAuth (client de Adkio)
+GOOGLE_OAUTH_CLIENT_ID=
+GOOGLE_OAUTH_CLIENT_SECRET=
+GOOGLE_OAUTH_REDIRECT_URI=http://localhost:8000/connect/google_ads/callback
+
+# TikTok OAuth (app de Adkio)
+TIKTOK_APP_ID=
+TIKTOK_APP_SECRET=
+TIKTOK_OAUTH_REDIRECT_URI=http://localhost:8000/connect/tiktok/callback
+
+# Meta OAuth (ya tenés META_APP_ID/META_APP_SECRET — se reusan)
+META_OAUTH_REDIRECT_URI=http://localhost:8000/connect/meta/callback
 ```
 
 ---
 
-## 8. Contacto
+## Contacto / dudas
 
-Si algo de los Protocol/dataclasses del core te resulta limitante para tu trabajo, **avisame antes de cambiarlos** — tengo tests que dependen de la forma exacta. Casi seguro hay manera de extender sin romper.
+Si algo del core te tira un Protocol mismatch o te falta un campo en algún
+dataclass de credenciales: **avisame antes de cambiarlo**. Tengo tests que
+dependen de las firmas exactas. Casi seguro hay manera de extender sin romper —
+agregar un campo opcional, un kwarg con default, etc.
+
+Si tu Claude propone tocar archivos en `backend/integrations/` o
+`backend/tools/`, decile que **NO** y que avise.

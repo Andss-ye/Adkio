@@ -14,9 +14,11 @@ from typing import AsyncGenerator
 from backend.llm import call_llm
 from backend.tools.budget_validator import budget_validator
 from backend.tools.audience_analyzer import audience_analyzer
+from backend.tools.platform_recommender import platform_recommender
 from backend.tools.copy_generator import copy_generator
 from backend.tools.campaign_validator import campaign_validator
 from backend.tools.campaign_launcher import campaign_launcher
+from backend.tools.campaign_remover import campaign_remover
 from backend.tools.report_generator import report_generator
 
 _TOOL_DEFINITIONS = [
@@ -61,10 +63,30 @@ _TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "platform_recommender",
+            "description": (
+                "Decide la mejor plataforma (Meta / TikTok / Google Ads) según objetivo "
+                "y audiencia. Llama DESPUÉS de audience_analyzer y ANTES de copy_generator."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "objetivo": {
+                        "type": "string",
+                        "description": "Objetivo de negocio extraído del pedido del usuario",
+                    },
+                },
+                "required": ["objetivo"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "copy_generator",
             "description": (
                 "Genera el copy de la campaña (headline, body, CTA) alineado con el tono de la marca. "
-                "Llama DESPUÉS de audience_analyzer."
+                "Llama DESPUÉS de platform_recommender — el canal debe coincidir con la plataforma elegida."
             ),
             "parameters": {
                 "type": "object",
@@ -75,8 +97,19 @@ _TOOL_DEFINITIONS = [
                     },
                     "canal": {
                         "type": "string",
-                        "enum": ["instagram", "facebook"],
-                        "description": "Canal de Meta donde se publicará el anuncio",
+                        "enum": [
+                            "instagram",
+                            "facebook",
+                            "tiktok",
+                            "google_search",
+                            "google_display",
+                            "youtube",
+                        ],
+                        "description": (
+                            "Canal/placement donde se publicará. Debe ser consistente con la "
+                            "plataforma elegida por platform_recommender: meta → instagram|facebook, "
+                            "tiktok → tiktok, google_ads → google_search|google_display|youtube"
+                        ),
                     },
                     "nivel_consciencia": {
                         "type": "string",
@@ -110,21 +143,32 @@ _TOOL_DEFINITIONS = [
     },
 ]
 
-_SYSTEM_PROMPT = """Eres Adkio, un agente experto en Meta Ads para educación ejecutiva en LATAM.
+_SYSTEM_PROMPT = """Eres Adkio, un agente experto en publicidad digital multi-canal para LATAM.
 
 Tu trabajo es convertir el pedido del usuario en un plan de campaña completo usando estas tools en ORDEN ESTRICTO:
 1. budget_validator — siempre primero
 2. audience_analyzer — después de validar el presupuesto
-3. copy_generator — después de definir la audiencia
-4. campaign_validator — siempre último, con toda la información
+3. platform_recommender — elige Meta / TikTok / Google Ads según objetivo y audiencia
+4. copy_generator — copy alineado con la plataforma elegida
+5. campaign_validator — checklist final con toda la información
+
+Criterios de selección de plataforma (lo decide platform_recommender, pero entendelos):
+- **Meta (Instagram/Facebook):** leads B2B, educación ejecutiva, audiencias 28-55, real estate, finanzas. Default seguro para LATAM.
+- **TikTok:** awareness y alcance en audiencias 18-35, e-commerce visual, contenido viral. CPM bajo. Soft-delete (no permite hard-delete real).
+- **Google Ads:** intent activo (el usuario YA busca tu solución), B2B SaaS con keywords claros, comparativas de precio.
+
+Mapeo canal según plataforma:
+- meta → "instagram" o "facebook"
+- tiktok → "tiktok"
+- google_ads → "google_search" (intent), "google_display" (awareness/retargeting), "youtube" (video)
 
 Reglas:
 - Usa cada tool exactamente una vez, en ese orden
 - Infiere los parámetros del prompt del usuario — no pidas confirmación, actúa
 - Si el usuario no especifica duración, usa 14 días como default
-- Si no especifica canal, usa instagram como default
 - Si la audiencia es de ejecutivos/fundadores, el nivel de consciencia es solution_aware
 - Extrae el presupuesto del prompt (busca números, "dolares", "$", "USD")
+- El `canal` que pasás a copy_generator DEBE ser consistente con la plataforma que devolvió platform_recommender
 - Cuando termines el checklist final, NO respondas más — el plan está listo para aprobación humana
 """
 
@@ -158,6 +202,21 @@ def _dispatch_tool(
             brand_config=brand_config,
         )
         tool_outputs["audience_analyzer"] = result
+        return result
+
+    if tool_name == "platform_recommender":
+        audience = tool_outputs.get("audience_analyzer", {})
+        budget = tool_outputs.get("budget_validator", {})
+        result = platform_recommender(
+            objetivo=tool_args["objetivo"],
+            audiencia=audience,
+            brand_config=brand_config,
+            presupuesto_usd=float(
+                budget.get("presupuesto_diario_calculado", 0)
+                * tool_outputs.get("_duracion_dias", 14)
+            ),
+        )
+        tool_outputs["platform_recommender"] = result
         return result
 
     if tool_name == "copy_generator":
@@ -198,6 +257,14 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def _default_canal_for(platform: str) -> str:
+    return {
+        "meta": "instagram",
+        "tiktok": "tiktok",
+        "google_ads": "google_search",
+    }.get(platform, "instagram")
+
+
 async def run_campaign_agent(
     user_prompt: str,
     brand_id: str,
@@ -230,7 +297,7 @@ async def run_campaign_agent(
         },
     ]
 
-    max_iterations = 8  # safety cap — 4 tools max + some back-and-forth
+    max_iterations = 10  # safety cap — 5 tools (budget/audience/platform/copy/validator) + back-and-forth
 
     for _ in range(max_iterations):
         try:
@@ -301,6 +368,7 @@ def _build_plan(tool_outputs: dict, brand_config: dict) -> dict:
         "copy": tool_outputs.get("copy_generator", {}),
         "targeting": tool_outputs.get("audience_analyzer", {}),
         "budget": tool_outputs.get("budget_validator", {}),
+        "platform_recommendation": tool_outputs.get("platform_recommender", {}),
         "validation": tool_outputs.get("campaign_validator", {}),
         "duracion_dias": tool_outputs.get("_duracion_dias", 14),
     }
@@ -321,12 +389,17 @@ async def approve_and_launch(plan: dict) -> dict:
             "El presupuesto calculado es cero — budget_validator debe ejecutarse antes de aprobar"
         )
 
+    platform_reco = plan.get("platform_recommendation") or {}
+    platform = platform_reco.get("platform") or "meta"
+    canal = copy.get("canal") or _default_canal_for(platform)
+
     campaign_result = campaign_launcher(
-        canal="instagram",
+        canal=canal,
         copy=copy,
         targeting=targeting,
         budget=budget_usd,
         duracion_dias=duracion_dias,
+        platform=platform,
     )
 
     tool_outputs = {
