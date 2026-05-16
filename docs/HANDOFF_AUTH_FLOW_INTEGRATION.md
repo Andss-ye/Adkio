@@ -3,6 +3,13 @@
 > Estado: en la rama `feat/auth-flow-integration` (mergeable a main).
 > Conecta el multitenant base (handoff #1) con el flujo de usuario real:
 > landing → login → dashboard → settings drawer → campaña con plataforma elegida.
+>
+> **Antes de iterar**:
+> - Leer **`HANDOFF_INDEX.md`** para el mapa completo de docs y orden de lectura.
+> - Leer **`PRODUCT_STATE_ASSESSMENT.md`** para entender qué pasa si un usuario
+>   real prueba la app hoy (jurado, marketer, riesgos, roadmap).
+> - Leer **`AUDIT_PRODUCT.md`** para la lista de las 12 incoherencias detectadas
+>   y cuáles ya se arreglaron acá.
 
 ---
 
