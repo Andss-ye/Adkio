@@ -6,3 +6,8 @@ pydantic>=2.0.0
 supabase>=2.0.0
 facebook-business>=20.0.0
 slowapi>=0.1.9
+# Multichannel (TikTok + Google Ads)
+requests>=2.32.0
+google-ads>=24.0.0
+# Multitenant (Freddy): cifrado de tokens en platform_connections
+cryptography>=42.0.0
