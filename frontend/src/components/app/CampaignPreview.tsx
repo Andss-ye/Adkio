@@ -11,9 +11,53 @@ type Props = {
   onReset: () => void;
 };
 
-const CPL_MIN_USD = 8;
-const CPL_MAX_USD = 25;
-const CPL_BENCHMARK_USD = 15;
+// CPL fallback solo cuando el backend no devolvió kpis (caso muy edge).
+// Lo real viene de launchResult.kpis.cpl_min_usd / cpl_max_usd / cpl_usd —
+// el backend lo calcula dinámicamente por plataforma + país + audiencia.
+const CPL_FALLBACK_MID = 15;
+
+function fmtCpl(kpis: { cpl_min_usd?: number; cpl_max_usd?: number; cpl_usd?: number }): string {
+  if (kpis.cpl_min_usd != null && kpis.cpl_max_usd != null) {
+    return `$${kpis.cpl_min_usd.toFixed(0)}–$${kpis.cpl_max_usd.toFixed(0)}`;
+  }
+  if (kpis.cpl_usd != null) return `$${kpis.cpl_usd.toFixed(0)}`;
+  return `~$${CPL_FALLBACK_MID}`;
+}
+
+// Espejo del estimador del backend (backend/tools/campaign_launcher.py).
+// Lo usamos en el preview-state (antes de aprobar) porque ahí no hay launchResult.
+const CPL_BASE: Record<string, number> = { meta: 12, tiktok: 6.5, google_ads: 22 };
+const COUNTRY_INDEX: Record<string, number> = {
+  US: 1.0, CA: 0.92, GB: 0.95, AU: 0.95,
+  MX: 0.55, CO: 0.45, AR: 0.4, PE: 0.45, CL: 0.55, BR: 0.5, EC: 0.42, UY: 0.55, BO: 0.4,
+  ES: 0.75, DE: 0.85, FR: 0.85, IT: 0.75,
+};
+
+function estimateCplRange(
+  platform: 'meta' | 'tiktok' | 'google_ads',
+  paises: string[],
+  edadMin: number,
+  edadMax: number,
+  objetivoText: string,
+): { min: number; max: number } {
+  const base = CPL_BASE[platform] ?? CPL_FALLBACK_MID;
+  const countryFactor =
+    paises.length > 0
+      ? paises.reduce((s, p) => s + (COUNTRY_INDEX[p] ?? 0.6), 0) / paises.length
+      : 0.6;
+  const avg = (edadMin + edadMax) / 2;
+  const audFactor = avg < 28 ? 0.7 : avg > 45 ? 1.6 : 1.0;
+  const text = (objetivoText || '').toLowerCase();
+  const highIntent = ['b2b', 'founder', 'ceo', 'cfo', 'ejecutiv', 'enterprise', 'saas'];
+  const lowIntent = ['awareness', 'branding', 'alcance', 'video views', 'engagement'];
+  const intentFactor = highIntent.some((k) => text.includes(k))
+    ? 1.7
+    : lowIntent.some((k) => text.includes(k))
+      ? 0.5
+      : 1.0;
+  const center = base * countryFactor * audFactor * intentFactor;
+  return { min: Math.round(center * 0.7), max: Math.round(center * 1.35) };
+}
 
 function fmtBig(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -31,10 +75,10 @@ export default function CampaignPreview({ plan, status, launchResult, onApprove,
           expected_leads: Math.max(
             1,
             Math.floor(
-              (plan.budget.presupuesto_diario_calculado * plan.duracion_dias) / CPL_BENCHMARK_USD,
+              (plan.budget.presupuesto_diario_calculado * plan.duracion_dias) / CPL_FALLBACK_MID,
             ),
           ),
-          cpl_usd: CPL_BENCHMARK_USD,
+          cpl_usd: CPL_FALLBACK_MID,
           total_budget_usd: plan.budget.presupuesto_diario_calculado * plan.duracion_dias,
           daily_budget_usd: plan.budget.presupuesto_diario_calculado,
           duration_days: plan.duracion_dias,
@@ -144,10 +188,11 @@ export default function CampaignPreview({ plan, status, launchResult, onApprove,
                   </p>
                 </div>
                 <div className="liquid-glass rounded-xl p-3">
-                  <span className="text-[10px] uppercase tracking-widest text-white/40">CPL</span>
+                  <span className="text-[10px] uppercase tracking-widest text-white/40">CPL est.</span>
                   <p className="mt-1 text-sm font-semibold text-white tabular-nums" style={{ fontFamily: monoFont }}>
-                    ${CPL_MIN_USD}–${CPL_MAX_USD}
+                    {fmtCpl(kpis)}
                   </p>
+                  <p className="text-[9px] text-white/40 mt-0.5">USD/lead</p>
                 </div>
                 <div className="liquid-glass rounded-xl p-3">
                   <span className="text-[10px] uppercase tracking-widest text-white/40">Total</span>
@@ -213,7 +258,18 @@ export default function CampaignPreview({ plan, status, launchResult, onApprove,
   const { copy, targeting, budget, validation } = plan;
   const warnings = [...(budget.warnings ?? []), ...(validation.warnings ?? [])];
   const totalBudget = budget.presupuesto_diario_calculado * plan.duracion_dias;
-  const expectedLeads = Math.max(1, Math.floor(totalBudget / CPL_BENCHMARK_USD));
+  // CPL dinámico — espejo del estimador del backend
+  // (Plan.platform_recommendation no llega al frontend aún; usamos 'meta' como fallback
+  // hasta que extendamos Plan type. El cálculo varía por país/audiencia igualmente.)
+  const cplRange = estimateCplRange(
+    'meta',
+    targeting.paises ?? [],
+    targeting.edad_min ?? 25,
+    targeting.edad_max ?? 55,
+    `${copy.headline} ${copy.body}`,
+  );
+  const cplMid = (cplRange.min + cplRange.max) / 2;
+  const expectedLeads = Math.max(1, Math.floor(totalBudget / cplMid));
   const checklistTotal = Object.keys(validation.checklist_results ?? {}).length;
   const checklistPassed = Object.values(validation.checklist_results ?? {}).filter(Boolean).length;
 
@@ -319,10 +375,10 @@ export default function CampaignPreview({ plan, status, launchResult, onApprove,
               className="mt-1 text-sm font-semibold text-white tabular-nums"
               style={{ fontFamily: monoFont }}
             >
-              ${CPL_MIN_USD}–${CPL_MAX_USD}
+              ${cplRange.min}–${cplRange.max}
             </p>
             <p className="text-[10px] text-white/40 mt-0.5">
-              ≈ {expectedLeads} leads · benchmark LATAM
+              ≈ {expectedLeads} leads · {(targeting.paises ?? []).join(', ') || 'LATAM'}
             </p>
           </div>
         </div>

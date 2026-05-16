@@ -155,8 +155,11 @@ export default function CampaignDetail({ campaign, isSaved, onToggleSaved, onNew
             <div className="mt-1 text-[11px] text-white/50">
               {campaign.budget.dias} días · Total ${campaign.budget.total.toLocaleString()}
             </div>
-            {/* Honest CPL range */}
-            <div className="mt-1 text-[10px] text-white/35">CPL estimado: $8–25 USD</div>
+            {/* CPL viene desde campaign.metrics.CPL — el mapper en DashboardPage
+                lee cpl_min_usd/cpl_max_usd del backend (dinámico por país+audiencia) */}
+            <div className="mt-1 text-[10px] text-white/35">
+              CPL: {campaign.metrics?.find((m) => m.label.toLowerCase().includes('cpl'))?.value ?? '—'}
+            </div>
           </div>
         </div>
 

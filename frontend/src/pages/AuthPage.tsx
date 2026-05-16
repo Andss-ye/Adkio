@@ -104,17 +104,22 @@ export default function AuthPage({ initialMode }: Props) {
 function AuthForm({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordConfirm, setPasswordConfirm] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   async function handle(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    // Validación de confirmación solo en signup
+    if (mode === 'signup' && password !== passwordConfirm) {
+      setError('Las contraseñas no coinciden');
+      return;
+    }
     setLoading(true);
     try {
       if (mode === 'login') await login(email, password);
       else await signup(email, password);
-      // Después del login/signup vamos directo al dashboard
       window.location.href = '/dashboard';
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error');
@@ -131,7 +136,7 @@ function AuthForm({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void })
       <div className="flex items-center gap-1 p-1 rounded-xl bg-white/[0.04] border border-white/[0.06] mb-7">
         <button
           type="button"
-          onClick={() => { setMode('signup'); setError(''); window.history.replaceState({}, '', '/signup'); }}
+          onClick={() => { setMode('signup'); setError(''); setPasswordConfirm(''); window.history.replaceState({}, '', '/signup'); }}
           className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
             mode === 'signup' ? 'bg-white text-black shadow-lg' : 'text-white/55 hover:text-white'
           }`}
@@ -140,7 +145,7 @@ function AuthForm({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void })
         </button>
         <button
           type="button"
-          onClick={() => { setMode('login'); setError(''); window.history.replaceState({}, '', '/login'); }}
+          onClick={() => { setMode('login'); setError(''); setPasswordConfirm(''); window.history.replaceState({}, '', '/login'); }}
           className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
             mode === 'login' ? 'bg-white text-black shadow-lg' : 'text-white/55 hover:text-white'
           }`}
@@ -166,6 +171,22 @@ function AuthForm({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void })
         required
         minLength={8}
       />
+      {mode === 'signup' && (
+        <Field
+          label="Confirmar contraseña"
+          type="password"
+          value={passwordConfirm}
+          onChange={setPasswordConfirm}
+          placeholder="Repetí la contraseña"
+          required
+          minLength={8}
+        />
+      )}
+      {mode === 'signup' && passwordConfirm && password !== passwordConfirm && (
+        <div className="-mt-2 mb-3 text-[11px] text-amber-300">
+          ⚠️ Las contraseñas no coinciden
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 flex items-start gap-2 text-xs px-3 py-2.5 rounded-lg bg-red-500/[0.08] border border-red-500/25 text-red-200">

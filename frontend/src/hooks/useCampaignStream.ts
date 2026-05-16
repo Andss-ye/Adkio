@@ -57,6 +57,9 @@ export type BackendHealth = 'checking' | 'online' | 'offline';
 export type LaunchKpis = {
   expected_leads: number;
   cpl_usd: number;
+  /** Rango dinámico estimado por backend (no constante global) */
+  cpl_min_usd?: number;
+  cpl_max_usd?: number;
   total_budget_usd: number;
   daily_budget_usd: number;
   duration_days: number;
@@ -70,6 +73,10 @@ export type LaunchResult = {
   report?: string;
   kpis?: LaunchKpis;
   next_steps?: string[];
+  /** True si la campaña no tocó la API real (sin credenciales conectadas) */
+  is_mock?: boolean;
+  /** Plataforma donde se creó la campaña */
+  platform?: 'meta' | 'tiktok' | 'google_ads';
 };
 
 function parseSseChunk(chunk: string): { event: string; data: unknown }[] {

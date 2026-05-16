@@ -123,7 +123,15 @@ export default function Sidebar({ view, statusFilter, counts, campaigns, onViewC
                 ${Math.round(totalBudget).toLocaleString('en-US')}
               </div>
               <div className="text-[11px] text-white/50 mt-1">
-                {campaigns.length} {campaigns.length === 1 ? 'campaña' : 'campañas'} · Meta Ads
+                {campaigns.length} {campaigns.length === 1 ? 'campaña' : 'campañas'} ·{' '}
+                {(() => {
+                  const platforms = Array.from(new Set(campaigns.map((c) => c.platform).filter(Boolean)));
+                  return platforms.length === 0
+                    ? 'sin plataforma'
+                    : platforms.length === 1
+                      ? platforms[0]
+                      : `${platforms.length} canales`;
+                })()}
               </div>
             </>
           ) : (

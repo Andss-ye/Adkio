@@ -444,10 +444,12 @@ async def approve_and_launch(plan: dict) -> dict:
         from backend.db.supabase_client import create_campaign_result
         kpis = campaign_result.get("kpis", {})
         await asyncio.to_thread(create_campaign_result, {
-            "account_id": plan.get("_account_id"),  # multitenant — viene del JWT vía main.py
+            "account_id": plan.get("_account_id"),
             "brand_id": plan.get("brand_id", "demo-edu-latam"),
             "campaign_id": campaign_result.get("campaign_id"),
             "status": campaign_result.get("status"),
+            "platform": campaign_result.get("platform"),
+            "is_mock": bool(campaign_result.get("is_mock", False)),
             "estimated_reach": campaign_result.get("estimated_reach"),
             "preview_url": campaign_result.get("preview_url"),
             "user_prompt": plan.get("user_prompt", ""),
@@ -459,6 +461,8 @@ async def approve_and_launch(plan: dict) -> dict:
             "paises": targeting.get("paises", []),
             "expected_leads": kpis.get("expected_leads"),
             "cpl_usd": kpis.get("cpl_usd"),
+            "cpl_min_usd": kpis.get("cpl_min_usd"),
+            "cpl_max_usd": kpis.get("cpl_max_usd"),
         })
     except Exception as _e:
         import logging
@@ -467,6 +471,8 @@ async def approve_and_launch(plan: dict) -> dict:
     return {
         "campaign_id": campaign_result.get("campaign_id"),
         "status": campaign_result.get("status"),
+        "platform": campaign_result.get("platform"),
+        "is_mock": bool(campaign_result.get("is_mock", False)),
         "estimated_reach": campaign_result.get("estimated_reach"),
         "preview_url": campaign_result.get("preview_url"),
         "report": report,

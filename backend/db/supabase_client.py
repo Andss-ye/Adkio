@@ -111,7 +111,9 @@ _CAMPAIGN_FIELDS = {
     "account_id",  # multitenant — quien lanzó la campaña
     "brand_id", "campaign_id", "status", "estimated_reach", "preview_url",
     "user_prompt", "copy_headline", "copy_body", "copy_cta",
-    "budget_usd", "duration_days", "paises", "expected_leads", "cpl_usd",
+    "budget_usd", "duration_days", "paises", "expected_leads",
+    "cpl_usd", "cpl_min_usd", "cpl_max_usd",
+    "platform", "is_mock",
 }
 
 
