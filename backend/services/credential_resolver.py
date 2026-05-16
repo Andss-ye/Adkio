@@ -20,6 +20,7 @@ el nombre de plataforma es inválido.
 """
 from __future__ import annotations
 
+import contextvars
 import os
 from typing import Optional, Protocol, Union, runtime_checkable
 
@@ -125,4 +126,116 @@ class EnvCredentialResolver:
         )
 
 
-__all__ = ["CredentialResolver", "EnvCredentialResolver"]
+class DBCredentialResolver:
+    """Multitenant: lee credenciales de `platform_connections` filtrando por
+    `adkio_account_id` y desencripta los tokens con Fernet.
+
+    Drop-in para `EnvCredentialResolver` — cumple el mismo Protocol. Se instancia
+    **por request** porque depende del JWT del usuario actual.
+    """
+
+    def __init__(self, account_id: str, supabase_client):
+        if not account_id:
+            raise ValueError("DBCredentialResolver requiere account_id")
+        self._account_id = account_id
+        self._db = supabase_client
+
+    def resolve(self, platform: PlatformName) -> Optional[PlatformCreds]:
+        if platform not in _VALID_PLATFORMS:
+            raise ValueError(
+                f"plataforma inválida: {platform!r} (esperado: {_VALID_PLATFORMS})"
+            )
+
+        # Importación tardía — no obligar a tener crypto si se usa solo EnvResolver
+        from backend.security.token_crypto import decrypt_token
+
+        try:
+            result = (
+                self._db.table("platform_connections")
+                .select("*")
+                .eq("adkio_account_id", self._account_id)
+                .eq("platform", platform)
+                .limit(1)
+                .execute()
+            )
+        except Exception:
+            return None
+
+        if not result.data:
+            return None
+        row = result.data[0]
+
+        access_token = decrypt_token(row["access_token_encrypted"])
+        extra = row.get("extra_jsonb") or {}
+
+        if platform == "meta":
+            return MetaCreds(
+                app_id=extra.get("app_id") or os.environ.get("META_APP_ID", ""),
+                app_secret=extra.get("app_secret") or os.environ.get("META_APP_SECRET", ""),
+                access_token=access_token,
+                ad_account_id=row["provider_account_id"],
+                page_id=extra.get("page_id"),
+            )
+
+        if platform == "tiktok":
+            return TikTokCreds(
+                access_token=access_token,
+                advertiser_id=row["provider_account_id"],
+                app_id=extra.get("app_id") or os.environ.get("TIKTOK_APP_ID"),
+                app_secret=extra.get("app_secret") or os.environ.get("TIKTOK_APP_SECRET"),
+                sandbox=bool(extra.get("sandbox", False)),
+            )
+
+        if platform == "google_ads":
+            refresh_token = (
+                decrypt_token(row["refresh_token_encrypted"])
+                if row.get("refresh_token_encrypted")
+                else ""
+            )
+            return GoogleAdsCreds(
+                # developer_token es nuestro (Adkio), no del usuario
+                developer_token=os.environ.get("ADKIO_GOOGLE_ADS_DEVELOPER_TOKEN", ""),
+                client_id=extra.get("client_id") or os.environ.get("GOOGLE_OAUTH_CLIENT_ID", ""),
+                client_secret=extra.get("client_secret") or os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", ""),
+                refresh_token=refresh_token,
+                customer_id=row["provider_account_id"],
+                login_customer_id=extra.get("login_customer_id"),
+            )
+
+        return None
+
+
+# ── Ambient resolver (ContextVar) ──────────────────────────────────────────
+# Permite que el middleware FastAPI inyecte un DBCredentialResolver por request
+# sin que el agente / tools tengan que recibirlo como parámetro explícito.
+# Las tools llaman `get_default_resolver()` cuando reciben `resolver=None`.
+
+_current_resolver: contextvars.ContextVar[Optional["CredentialResolver"]] = (
+    contextvars.ContextVar("adkio_current_resolver", default=None)
+)
+
+
+def get_default_resolver() -> "CredentialResolver":
+    """Devuelve el resolver activo en el contexto actual.
+
+    - Si el middleware seteó uno (multitenant): lo usa.
+    - Si no hay nada: `EnvCredentialResolver` (single-tenant via .env).
+    """
+    current = _current_resolver.get()
+    if current is not None:
+        return current
+    return EnvCredentialResolver()
+
+
+def set_current_resolver(resolver: Optional["CredentialResolver"]) -> None:
+    """Setea el resolver del contexto actual. Llamar desde middleware por request."""
+    _current_resolver.set(resolver)
+
+
+__all__ = [
+    "CredentialResolver",
+    "EnvCredentialResolver",
+    "DBCredentialResolver",
+    "get_default_resolver",
+    "set_current_resolver",
+]

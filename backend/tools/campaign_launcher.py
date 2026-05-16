@@ -22,7 +22,7 @@ import time
 
 from backend.integrations.adapter_registry import get_adapter, supported_platforms
 from backend.integrations.base import AdapterError, CampaignSpec
-from backend.services.credential_resolver import EnvCredentialResolver
+from backend.services.credential_resolver import EnvCredentialResolver, get_default_resolver
 
 _log = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ def campaign_launcher(
         _log.warning("Plataforma desconocida %r — fallback a mock", platform)
         return _launch_mock(canal, copy, targeting, budget, duracion_dias, platform)
 
-    resolver = resolver or EnvCredentialResolver()
+    resolver = resolver or get_default_resolver()
     creds = resolver.resolve(platform)
     if creds is None:
         _log.info("Sin credenciales para %s — usando mock calculado", platform)

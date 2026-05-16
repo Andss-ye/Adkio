@@ -56,6 +56,9 @@ from backend.db.supabase_client import (
     list_campaigns,
     delete_campaign,
 )
+from backend.auth.router import router as auth_router
+from backend.api.connections import router as connections_router
+from backend.middleware.tenant import tenant_middleware
 
 # ── Rate limiter (in-memory, no Redis needed for demo) ─────────────────────
 limiter = Limiter(key_func=get_remote_address)
@@ -63,6 +66,12 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Adkio API", version="0.2.0")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.include_router(auth_router)
+app.include_router(connections_router)
+
+# Tenant middleware — debe quedar DESPUÉS de CORS y de security_headers para
+# que ambos se apliquen incluso a respuestas 401 del middleware.
+app.middleware("http")(tenant_middleware)
 
 # ── CORS ───────────────────────────────────────────────────────────────────
 _ALLOWED_ORIGINS = [

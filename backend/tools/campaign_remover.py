@@ -26,7 +26,7 @@ import logging
 
 from backend.integrations.adapter_registry import get_adapter, supported_platforms
 from backend.integrations.base import AdapterError
-from backend.services.credential_resolver import EnvCredentialResolver
+from backend.services.credential_resolver import EnvCredentialResolver, get_default_resolver
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +73,7 @@ def campaign_remover(
             ),
         }
 
-    resolver = resolver or EnvCredentialResolver()
+    resolver = resolver or get_default_resolver()
     creds = resolver.resolve(platform)
     if creds is None:
         return {
