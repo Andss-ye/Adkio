@@ -9,13 +9,13 @@ export default function Hero() {
         style={{ animationDelay: '0.2s' }}
       >
         <span className="w-1.5 h-1.5 rounded-full bg-[#00d2ff] animate-pulse" />
-        <span>Ya disponible para Meta Ads</span>
+        <span>Meta · TikTok · Google Ads</span>
       </div>
       <h1
         className="text-4xl sm:text-5xl md:text-7xl font-semibold tracking-tight leading-[0.9] opacity-0 animate-aura-h1"
         style={{ animationDelay: '0.3s' }}
       >
-        <span className="block text-white">Tus Meta ads.</span>
+        <span className="block text-white">Tus ads en 3 plataformas.</span>
         <span className="block animate-shiny" style={gradientStyle}>
           Conversacionales.
         </span>
@@ -24,17 +24,17 @@ export default function Hero() {
         className="mt-8 text-white/60 max-w-md text-base leading-[1.5] opacity-0 animate-aura-fade-up"
         style={{ animationDelay: '0.5s' }}
       >
-        Adkio convierte lenguaje natural en campañas de Meta Ads completas y segmentadas. Describí
-        qué vendés y a quién querés llegar — Adkio escribe el copy, elige la audiencia y la pone al
-        aire.
+        Adkio convierte lenguaje natural en campañas completas y segmentadas en Meta, TikTok y
+        Google Ads. Describí qué vendés y a quién querés llegar — Adkio elige la plataforma
+        correcta, escribe el copy y la pone al aire.
       </p>
       <div
         className="mt-8 flex flex-col items-center gap-3 opacity-0 animate-aura-fade-up"
         style={{ animationDelay: '0.7s' }}
       >
-        <AppleButton label="Probá Adkio gratis" href="/dashboard" />
+        <AppleButton label="Probá Adkio gratis" href="/login" />
         <span className="text-xs text-white/40">
-          Sin tarjeta · Conectá tu cuenta de Meta en 60 segundos
+          Sin tarjeta · Conectá tus cuentas en 60 segundos
         </span>
       </div>
     </section>
