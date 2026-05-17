@@ -15,13 +15,13 @@ const plans: Plan[] = [
     tier: 'Starter',
     priceMonth: 'Gratis',
     priceYear: 'Gratis',
-    desc: 'Para founders en solitario corriendo sus primeras campañas en Meta.',
+    desc: 'Para founders en solitario corriendo sus primeras campañas pagas.',
     features: [
       'Hasta 3 campañas activas',
       'Hasta $2.000 / mes de gasto gestionado',
       'Generación con IA básica',
-      'Todas las ubicaciones de Meta',
-      '1 cuenta publicitaria de Meta',
+      'Meta, TikTok y Google Ads',
+      '1 cuenta por plataforma',
     ],
   },
   {
@@ -78,7 +78,7 @@ export default function Pricing() {
       {/* Watermark headline */}
       <div className="relative w-full max-w-[1100px] text-center mt-10 z-[2]">
         <div className="flex flex-col items-center font-extrabold leading-[0.9] tracking-[-0.05em] text-[3.5rem] lg:text-[9rem] lg:[filter:url(#c3-noise-pricing)]">
-          <span className="text-white">Tus Meta ads.</span>
+          <span className="text-white">Tus ads en 3 plataformas.</span>
           <span
             className="text-[#00d2ff] lg:text-transparent lg:bg-clip-text"
             style={{

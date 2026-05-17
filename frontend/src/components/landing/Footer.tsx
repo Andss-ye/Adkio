@@ -50,7 +50,7 @@ export default function Footer() {
             Adkio
           </span>
           <p className="mt-7 text-[1.9rem] md:text-[2.4rem] font-medium leading-[1.15] tracking-tight text-white max-w-xs">
-            Tus Meta Ads,<br />
+            Tus ads en 3 plataformas,<br />
             desde lenguaje{' '}
             <em className="font-serif" style={{ fontStyle: 'italic' }}>natural.</em>
           </p>

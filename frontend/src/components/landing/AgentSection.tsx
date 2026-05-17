@@ -176,7 +176,7 @@ export default function AgentSection() {
                   Campaña lista para revisión
                 </div>
                 <button
-                  onClick={() => (window.location.href = '/dashboard')}
+                  onClick={() => (window.location.href = '/login')}
                   className="text-xs font-semibold tracking-tight px-4 py-2 rounded-full bg-white text-black hover:bg-white/90 transition-colors"
                 >
                   Revisar
