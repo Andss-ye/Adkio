@@ -1,25 +1,19 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { getAccount, isLoggedIn, logout, signup, login, type Account } from '@/lib/auth';
+import { getAccount, logout, type Account } from '@/lib/auth';
 import NoiseFilter from '@/components/ui/NoiseFilter';
 import LogoMark from '@/components/ui/LogoMark';
-import AuthScreen from '@/components/settings/AuthScreen';
 import ConnectionCard, { type Platform, type Connection, PLATFORM_META } from '@/components/settings/ConnectionCard';
 import { ChevronLeft, Check } from '@/components/ui/Icons';
 
 export default function SettingsPage() {
-  const [logged, setLogged] = useState(isLoggedIn());
-
-  if (!logged) {
-    return <AuthScreen onSuccess={() => setLogged(true)} signup={signup} login={login} />;
-  }
-
   return (
     <ConnectionsView
       account={getAccount()}
       onLogout={() => {
         logout();
-        setLogged(false);
+        // replace evita que el back-button vuelva a una pantalla autenticada
+        window.location.replace('/login');
       }}
     />
   );
