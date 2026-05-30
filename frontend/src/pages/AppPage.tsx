@@ -7,7 +7,7 @@ import Sidebar, { type SidebarSection } from '@/components/shell/Sidebar';
 import TopBar from '@/components/shell/TopBar';
 import PlatformIcon from '@/components/shell/PlatformIcon';
 import {
-  IcSparkle, IcCheck, IcReset, IcArrowRight, IcSend, IcMic, IcPlus,
+  IcSparkle, IcCheck, IcReset, IcArrowRight, IcSend,
   IcChevronDown,
 } from '@/components/shell/icons';
 import SettingsDrawer from '@/components/dashboard/SettingsDrawer';
@@ -75,7 +75,8 @@ function toolDisplayName(t: string): string {
 export default function AppPage() {
   const {
     toolEvents, plan, status, errorMsg, launchResult,
-    mode, backendHealth, startStream, approveCampaign, reset,
+    mode, backendHealth, refining, refineCount,
+    startStream, approveCampaign, refineCampaign, reset,
   } = useCampaignStream();
 
   const vp = useViewport();
@@ -178,11 +179,32 @@ export default function AppPage() {
     }
   }, [status, plan, launchResult, errorMsg]);
 
-  const isStreaming = status === 'streaming' || status === 'approving';
+  const isStreaming = status === 'streaming' || status === 'approving' || refining;
 
   const handleSend = (override?: string) => {
-    const text = (override ?? input).trim() || DEMO_PROMPT;
     if (isStreaming) return;
+    const raw = (override ?? input).trim();
+    // En plan_ready, el chat REFINA el plan existente (no arranca de cero).
+    if (status === 'plan_ready' && plan) {
+      const feedback = raw;
+      if (!feedback) return;
+      setThread((prev) => [...prev, { role: 'user', text: feedback, ts: nowStamp() }]);
+      setInput('');
+      refineCampaign(feedback).then((r) => {
+        setThread((prev) => [
+          ...prev,
+          {
+            role: 'ai',
+            ts: nowStamp(),
+            text: r.ok
+              ? `✏️ ${r.summary ?? 'Plan actualizado.'}`
+              : `No pude ajustar: ${r.error ?? 'error'}`,
+          },
+        ]);
+      });
+      return;
+    }
+    const text = raw || DEMO_PROMPT;
     setThread((prev) => [...prev, { role: 'user', text, ts: nowStamp() }]);
     setInput('');
     startStream(text, 'demo-edu-latam', platformHint);
@@ -236,6 +258,7 @@ export default function AppPage() {
       onPlatformHint={setPlatformHint}
       statusLabel={STATUS_LABELS[status]}
       bordered={!useTabs}
+      refineMode={status === 'plan_ready'}
     />
   );
   const reasoningCol = <ReasoningColumn toolEvents={toolEvents} status={status} />;
@@ -508,7 +531,7 @@ function BackendBadge({
 
 function ChatColumn({
   thread, input, onInput, onKeyDown, onSend, isStreaming, inputRef, threadRef,
-  platformHint, onPlatformHint, statusLabel, bordered,
+  platformHint, onPlatformHint, statusLabel, bordered, refineMode = false,
 }: {
   thread: ThreadMsg[];
   input: string;
@@ -522,6 +545,7 @@ function ChatColumn({
   onPlatformHint: (p: PlatformHint) => void;
   statusLabel: string;
   bordered: boolean;
+  refineMode?: boolean;
 }) {
   const [openPlatform, setOpenPlatform] = useState(false);
 
@@ -634,7 +658,11 @@ function ChatColumn({
               value={input}
               onChange={(e) => onInput(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder='Reply to Adkio — e.g. "Use 1% lookalike, add a TikTok mirror."'
+              placeholder={
+                refineMode
+                  ? 'Ajustá el plan — ej: "copy más directo", "baja a $150", "apuntá a 25-35", "pasá a TikTok"'
+                  : 'Describí tu campaña — ej: "Vender curso a pymes en México, $300 por 14 días"'
+              }
               rows={1}
               disabled={isStreaming}
               style={{
@@ -651,9 +679,6 @@ function ChatColumn({
                 position: 'relative', zIndex: 1, flexWrap: 'wrap',
               }}
             >
-              <button style={composerCircleBtn()} title="Attach">
-                <IcPlus width={13} height={13} />
-              </button>
               <PlatformPicker
                 value={platformHint}
                 onChange={onPlatformHint}
@@ -661,9 +686,6 @@ function ChatColumn({
                 setOpen={setOpenPlatform}
               />
               <span style={{ flex: 1 }} />
-              <button style={composerCircleBtn(true)} title="Voice (coming soon)">
-                <IcMic width={13} height={13} />
-              </button>
               <button
                 onClick={onSend}
                 disabled={isStreaming || !input.trim()}
@@ -824,16 +846,6 @@ function PlatformPicker({
       )}
     </>
   );
-}
-
-function composerCircleBtn(noBorder?: boolean): React.CSSProperties {
-  return {
-    width: 28, height: 28, borderRadius: '50%',
-    background: noBorder ? 'transparent' : 'rgba(255,255,255,.04)',
-    border: noBorder ? 0 : '1px solid rgba(255,255,255,.06)',
-    display: 'grid', placeItems: 'center',
-    color: 'var(--text-2)', cursor: 'pointer',
-  };
 }
 
 function composerPillBtn(): React.CSSProperties {
@@ -1541,8 +1553,28 @@ function DeployCard({
   return (
     <ResultCard title="Ready to deploy" accent>
       <p style={{ margin: 0, color: 'var(--text-2)', fontSize: 12.5, lineHeight: 1.55 }}>
-        Adkio will publish the campaign and start monitoring CPL hourly. You can pause it
-        from the dashboard at any time.
+        Al deployar, Adkio <b style={{ color: 'var(--text)' }}>guarda la campaña</b> en tu workspace y
+        la crea en estado <b style={{ color: 'var(--text)' }}>PAUSED</b> para que la revises.
+      </p>
+      {!isLoggedIn() && (
+        <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.5, color: '#E8B260' }}>
+          ⚠ No iniciaste sesión: la campaña no quedará guardada en tu workspace.{' '}
+          <a href="/login" style={{ color: '#E8B260', textDecoration: 'underline' }}>Iniciá sesión</a> para guardarla.
+        </p>
+      )}
+      <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.5, color: 'var(--text-3)' }}>
+        Sin <b style={{ color: 'var(--text-2)' }}>{platform === 'meta' ? 'Meta' : platform === 'tiktok' ? 'TikTok' : 'Google'}</b> conectado,
+        se crea en nuestro <b style={{ color: 'var(--text-2)' }}>sandbox</b> (no gasta dinero). Conectá tu cuenta en Conexiones para lanzar real.
+      </p>
+      <p
+        style={{
+          margin: 0, fontSize: 11.5, lineHeight: 1.5,
+          color: 'var(--text-3)', borderTop: '1px dashed var(--hairline-soft)', paddingTop: 8,
+        }}
+      >
+        ¿No te convence? <b style={{ color: '#9cc4ff' }}>Pedí un ajuste en el chat</b> y Adkio
+        itera sobre este plan sin empezar de cero — ej: "copy más agresivo", "baja a $150",
+        "apuntá a 25-35", "pasá a TikTok".
       </p>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button
