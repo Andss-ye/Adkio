@@ -11,8 +11,85 @@ body {
 }
 
 ::selection {
-  background: rgba(61, 129, 227, 0.3);
+  background: rgba(91, 157, 255, 0.3);
   color: #fff;
+}
+
+/* ============================================================
+   Adkio · App surface design tokens (Dashboard + New campaign)
+   ============================================================ */
+.adkio-surface {
+  /* backgrounds */
+  --bg-sidebar: #0E0F11;
+  --bg-main: #141517;
+  --bg-card: #1B1C1F;
+  --bg-card-2: #202125;
+  --bg-raised: #26272B;
+  /* lines */
+  --hairline: #24252A;
+  --hairline-soft: #1E1F23;
+  /* type */
+  --text: #F1F1F3;
+  --text-2: #9A9BA1;
+  --text-3: #62646A;
+  /* accent (azure blue) */
+  --accent: oklch(0.74 0.13 248);
+  --accent-ink: #0A0F1A;
+  --accent-soft: oklch(0.82 0.07 245);
+  /* semantic */
+  --pos: #7CD992;
+  --neg: #E97A7A;
+  --meta-tone: #5B8DEF;
+  --tiktok-tone: #E96BA8;
+  --google-tone: #E8B260;
+  /* radii */
+  --radius: 14px;
+  --radius-sm: 10px;
+
+  background: #08090B;
+  color: var(--text);
+  font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.adkio-surface .font-mono,
+.adkio-surface code,
+.adkio-surface kbd,
+.adkio-surface .tab-num {
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* AI composer rotating border angle */
+@property --ang {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes adkio-ai-spin {
+  to { --ang: 360deg; }
+}
+
+@keyframes adkio-live-pulse {
+  50% { box-shadow: 0 0 0 7px rgba(91, 157, 255, 0.05); }
+}
+
+@keyframes adkio-dot-pulse {
+  50% { box-shadow: 0 0 0 5px rgba(126, 182, 255, 0.18); }
+}
+
+@keyframes adkio-skel {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.adkio-skel {
+  background: linear-gradient(90deg, #1F2024 0, #26272B 50%, #1F2024 100%);
+  background-size: 200% 100%;
+  animation: adkio-skel 1.4s infinite;
+  border-radius: 6px;
 }
 
 @layer components {
@@ -62,16 +139,16 @@ body {
     scrollbar-color: rgba(255, 255, 255, 0.10) transparent;
   }
   .dark-scroll::-webkit-scrollbar {
-    width: 4px;
+    width: 8px;
   }
   .dark-scroll::-webkit-scrollbar-track {
     background: transparent;
   }
   .dark-scroll::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.10);
+    background: #23252A;
     border-radius: 9999px;
   }
   .dark-scroll::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 210, 255, 0.30);
+    background: rgba(91, 157, 255, 0.30);
   }
 }
