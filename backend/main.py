@@ -25,7 +25,7 @@ load_dotenv()
 
 # ── Startup env validation ─────────────────────────────────────────────────
 # Fail fast if critical vars are missing — better than a cryptic 500 later.
-_REQUIRED_VARS = ["SUPABASE_URL", "GROQ_API_KEY"]
+_REQUIRED_VARS = ["SUPABASE_URL", "ANTHROPIC_API_KEY"]
 _missing = [v for v in _REQUIRED_VARS if not os.environ.get(v)]
 if _missing:
     print(f"[Adkio] FATAL: missing env vars: {', '.join(_missing)}", file=sys.stderr)
