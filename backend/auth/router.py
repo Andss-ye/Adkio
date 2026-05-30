@@ -8,6 +8,7 @@ Rutas (todas públicas — el middleware tenant las skipea):
 """
 from __future__ import annotations
 
+import logging
 import re
 
 from fastapi import APIRouter, HTTPException, Request
@@ -23,10 +24,48 @@ from backend.db.accounts import (
     create_account,
     get_account_by_email,
     get_account_by_id,
+    set_account_brand,
     update_last_login,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+_logger = logging.getLogger(__name__)
+
+
+def _provision_default_brand(account: dict) -> str | None:
+    """Crea una marca por defecto (neutra y editable) para una cuenta nueva y la
+    vincula. Best-effort: si falla, no bloquea el signup (el agente cae a
+    'demo-edu-latam'). Devuelve el brand_id o None."""
+    from backend.db.supabase_client import create_brand_config
+
+    local = (account.get("email") or "mi-negocio").split("@")[0]
+    nombre = local.replace(".", " ").replace("_", " ").title() or "Mi negocio"
+    try:
+        brand_id = create_brand_config(
+            {
+                "slug": f"acct-{account['id']}",
+                "negocio_nombre": nombre,
+                "negocio_industria": "general",
+                "propuesta_de_valor": "",
+                "publico_roles": [],
+                "publico_paises": ["Colombia", "Mexico"],
+                "publico_edad_min": 18,
+                "publico_edad_max": 55,
+                "publico_intereses": [],
+                "presupuesto_min_campana_usd": 50.0,
+                "presupuesto_max_campana_usd": 5000.0,
+                "tono_estilo": [],
+                "tono_evitar": [],
+                "ejemplos_copy_aprobado": [],
+                "pixel_configurado": False,
+            }
+        )
+        set_account_brand(account["id"], brand_id)
+        return brand_id
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("No se pudo provisionar marca por defecto: %s", exc)
+        return None
 
 
 class SignupRequest(BaseModel):
@@ -70,6 +109,8 @@ async def signup(body: SignupRequest) -> dict:
     if get_account_by_email(email):
         raise HTTPException(status_code=409, detail="Email ya registrado")
     account = create_account(email=email, password_hash=hash_password(body.password))
+    # Cada cuenta arranca con su propia marca (editable en Settings → Marca).
+    _provision_default_brand(account)
     return _tokens_response(account)
 
 

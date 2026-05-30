@@ -494,3 +494,211 @@ async def approve_and_launch(plan: dict) -> dict:
         "kpis": campaign_result.get("kpis"),
         "next_steps": campaign_result.get("next_steps"),
     }
+
+
+# ── Iteración agéntica (refinamiento del plan) ──────────────────────────────
+# El usuario (un marketer) no aprueba el plan tal cual y quiere ajustarlo sin
+# empezar de cero ni gastar tokens re-corriendo las 5 tools. refine_plan hace
+# UNA sola llamada al LLM que devuelve el plan actualizado, y todo lo derivado
+# (presupuesto diario, alcance, validación) se recomputa de forma determinística.
+
+import re as _re
+from backend.tools.audience_analyzer import _estimate_reach
+from backend.tools.budget_validator import MIN_DAILY_BUDGET_USD, META_LEARNING_PHASE_DAYS
+from backend.tools.campaign_validator import _CHECKLIST, _BLOCKER_KEYS, _humanize
+
+_VALID_PLATFORMS = ("meta", "tiktok", "google_ads")
+
+_REFINE_SYSTEM = """Sos un estratega senior de paid media (Meta, TikTok, Google Ads) que ajusta
+una campaña EXISTENTE según el pedido de un marketer. Aplicá el cambio con criterio experto,
+modificando SOLO lo necesario y manteniendo coherencia con la marca. Sé decisivo y contundente:
+resolvé el pedido de una, con calidad profesional, para que NO haya que pedirlo 5 veces.
+
+Devolvé SOLO un JSON con esta estructura EXACTA (sin texto fuera del JSON):
+{
+  "copy": {"headline": "str <=40 chars", "body": "str", "cta": "str", "rationale": "str"},
+  "targeting": {"intereses": ["str"], "edad_min": int, "edad_max": int, "paises": ["str"], "exclusiones": ["str"], "rationale": "str"},
+  "budget": {"monto_usd": number, "duracion_dias": int},
+  "platform": "meta" | "tiktok" | "google_ads",
+  "change_summary": "1-2 oraciones en español: qué cambiaste y por qué"
+}
+Reglas:
+- Si el pedido NO menciona algo (ej: no habla del presupuesto), MANTENÉ el valor actual.
+- edad entre 13 y 65; headline <= 40 chars; no inventes países fuera de los pedidos o actuales.
+- Los rationale deben ser específicos al cambio pedido, no genéricos."""
+
+
+def _clamp(v, lo, hi, fallback):
+    try:
+        return max(lo, min(hi, int(v)))
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _recompute_budget(monto_usd: float, duracion_dias: int, brand_config: dict) -> dict:
+    """Reglas de presupuesto sin LLM (espejo de budget_validator)."""
+    duracion_dias = duracion_dias if duracion_dias and duracion_dias > 0 else 14
+    presupuesto_diario = round(monto_usd / duracion_dias, 2)
+    pmin = brand_config.get("presupuesto_min_campana_usd", 100.0)
+    pmax = brand_config.get("presupuesto_max_campana_usd", 500.0)
+    warnings, aprobado = [], True
+    if presupuesto_diario < MIN_DAILY_BUDGET_USD:
+        aprobado = False
+        warnings.append(
+            f"Presupuesto diario ${presupuesto_diario} por debajo del mínimo (${MIN_DAILY_BUDGET_USD}/día)."
+        )
+    if monto_usd < pmin:
+        warnings.append(f"${monto_usd} está por debajo del mínimo recomendado de la marca (${pmin}).")
+    if monto_usd > pmax:
+        warnings.append(f"${monto_usd} supera el máximo configurado de la marca (${pmax}).")
+    if duracion_dias < META_LEARNING_PHASE_DAYS:
+        warnings.append(
+            f"Con {duracion_dias} días no se cubre la fase de aprendizaje ({META_LEARNING_PHASE_DAYS} días)."
+        )
+    return {
+        "aprobado": aprobado,
+        "warnings": warnings,
+        "presupuesto_diario_calculado": presupuesto_diario,
+        "rationale": "Presupuesto recalculado tras tu ajuste.",
+    }
+
+
+def _recompute_validation(plan_params: dict, change_summary: str) -> dict:
+    """Checklist determinístico (espejo de campaign_validator, sin LLM)."""
+    checklist = {k: bool(fn(plan_params)) for k, fn in _CHECKLIST.items()}
+    blockers = [k for k in _BLOCKER_KEYS if not checklist[k]]
+    warnings = [k for k, ok in checklist.items() if not ok and k not in _BLOCKER_KEYS]
+    passed = len(blockers) == 0
+    return {
+        "passed": passed,
+        "warnings": _humanize(warnings),
+        "blockers": _humanize(blockers),
+        "checklist_results": checklist,
+        "rationale": change_summary or ("Campaña lista." if passed else "Hay puntos a resolver."),
+    }
+
+
+def _parse_json_loose(raw: str) -> dict:
+    raw = (raw or "").strip()
+    m = _re.search(r"```(?:json)?\s*([\s\S]*?)```", raw)
+    if m:
+        raw = m.group(1).strip()
+    return json.loads(raw)
+
+
+async def refine_plan(plan: dict, feedback: str, brand_config: dict) -> dict:
+    """Refina un plan existente con UNA sola llamada LLM + recomputo determinístico.
+
+    Devuelve un plan con la misma forma que `_build_plan` + `change_summary`.
+    Si el LLM falla o devuelve algo inválido, retorna el plan original con un
+    change_summary explicativo (nunca rompe).
+    """
+    cur_copy = plan.get("copy", {}) or {}
+    cur_tgt = plan.get("targeting", {}) or {}
+    cur_budget = plan.get("budget", {}) or {}
+    cur_reco = plan.get("platform_recommendation", {}) or {}
+    cur_duracion = int(plan.get("duracion_dias", 14) or 14)
+    cur_monto = round(float(cur_budget.get("presupuesto_diario_calculado", 0) or 0) * cur_duracion, 2)
+    cur_platform = cur_reco.get("platform") or "meta"
+
+    user_payload = {
+        "marca": {
+            "nombre": brand_config.get("negocio_nombre"),
+            "industria": brand_config.get("negocio_industria"),
+            "propuesta": brand_config.get("propuesta_de_valor"),
+        },
+        "plan_actual": {
+            "copy": {k: cur_copy.get(k) for k in ("headline", "body", "cta")},
+            "targeting": {
+                "intereses": cur_tgt.get("intereses", []),
+                "edad_min": cur_tgt.get("edad_min"),
+                "edad_max": cur_tgt.get("edad_max"),
+                "paises": cur_tgt.get("paises", []),
+                "exclusiones": cur_tgt.get("exclusiones", []),
+            },
+            "budget": {"monto_usd": cur_monto, "duracion_dias": cur_duracion},
+            "platform": cur_platform,
+        },
+        "pedido_de_cambio": feedback,
+    }
+
+    messages = [
+        {"role": "system", "content": _REFINE_SYSTEM},
+        {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+    ]
+
+    try:
+        resp = await asyncio.to_thread(call_llm, messages)
+        data = _parse_json_loose(resp.choices[0].message.content)
+    except Exception:
+        # Nunca rompemos: devolvemos el plan tal cual con aviso.
+        out = dict(plan)
+        out["change_summary"] = "No pude aplicar el cambio — reformulá el pedido (ej: 'copy más directo', 'baja el presupuesto a 150')."
+        return out
+
+    new_copy_raw = data.get("copy", {}) or {}
+    new_tgt_raw = data.get("targeting", {}) or {}
+    new_budget_raw = data.get("budget", {}) or {}
+    change_summary = (data.get("change_summary") or "Plan actualizado.").strip()
+
+    # Copy (con fallback al actual)
+    headline = (new_copy_raw.get("headline") or cur_copy.get("headline") or "")[:40]
+    copy = {
+        "headline": headline,
+        "body": new_copy_raw.get("body") or cur_copy.get("body") or "",
+        "cta": new_copy_raw.get("cta") or cur_copy.get("cta") or "Más información",
+        "rationale": new_copy_raw.get("rationale") or "Copy ajustado a tu pedido.",
+    }
+
+    # Targeting
+    edad_min = _clamp(new_tgt_raw.get("edad_min", cur_tgt.get("edad_min")), 13, 65, cur_tgt.get("edad_min", 25))
+    edad_max = _clamp(new_tgt_raw.get("edad_max", cur_tgt.get("edad_max")), 13, 65, cur_tgt.get("edad_max", 55))
+    if edad_min >= edad_max:
+        edad_min, edad_max = cur_tgt.get("edad_min", 25), cur_tgt.get("edad_max", 55)
+    paises = new_tgt_raw.get("paises") or cur_tgt.get("paises", [])
+    intereses = new_tgt_raw.get("intereses") or cur_tgt.get("intereses", [])
+    exclusiones = new_tgt_raw.get("exclusiones", cur_tgt.get("exclusiones", []))
+    targeting = {
+        "intereses": intereses,
+        "edad_min": edad_min,
+        "edad_max": edad_max,
+        "paises": paises,
+        "tamano_estimado": _estimate_reach(paises, edad_min, edad_max, len(intereses)),
+        "exclusiones": exclusiones,
+        "rationale": new_tgt_raw.get("rationale") or cur_tgt.get("rationale", "Audiencia ajustada."),
+    }
+
+    # Budget (recomputo determinístico)
+    try:
+        monto = float(new_budget_raw.get("monto_usd", cur_monto) or cur_monto)
+    except (TypeError, ValueError):
+        monto = cur_monto
+    duracion = _clamp(new_budget_raw.get("duracion_dias", cur_duracion), 1, 365, cur_duracion)
+    budget = _recompute_budget(monto, duracion, brand_config)
+
+    # Platform
+    platform = data.get("platform") if data.get("platform") in _VALID_PLATFORMS else cur_platform
+    if platform == cur_platform and cur_reco:
+        platform_reco = dict(cur_reco)
+        platform_reco["platform"] = platform
+    else:
+        platform_reco = {
+            "platform": platform,
+            "confidence": 1.0,
+            "rationale": f"Ajustado a {platform} por tu pedido.",
+        }
+
+    # Validación determinística
+    plan_params = {"copy": copy, "targeting": targeting, "budget": budget, "duracion_dias": duracion}
+    validation = _recompute_validation(plan_params, change_summary)
+
+    return {
+        "brand": brand_config.get("negocio_nombre"),
+        "copy": copy,
+        "targeting": targeting,
+        "budget": budget,
+        "platform_recommendation": platform_reco,
+        "validation": validation,
+        "duracion_dias": duracion,
+        "change_summary": change_summary,
+    }

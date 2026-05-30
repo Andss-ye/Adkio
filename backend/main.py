@@ -45,7 +45,7 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 try:
-    from backend.agents.campaign_agent import run_campaign_agent, approve_and_launch
+    from backend.agents.campaign_agent import run_campaign_agent, approve_and_launch, refine_plan
     _campaign_agent_available = True
 except ImportError:
     _campaign_agent_available = False
@@ -56,7 +56,9 @@ from backend.db.supabase_client import (
     list_campaigns,
     delete_campaign,
     set_campaign_status,
+    update_brand_config,
 )
+from backend.db.accounts import get_account_brand_id, get_account_by_id
 from backend.auth.router import router as auth_router
 from backend.api.connections import router as connections_router
 from backend.middleware.tenant import tenant_middleware
@@ -130,6 +132,19 @@ def _check_injection(text: str) -> None:
         logger.warning("Prompt injection attempt blocked: %.120s", text)
         raise HTTPException(status_code=400, detail="Invalid input")
 
+def _resolve_brand_id(request: Request, fallback: str) -> str:
+    """Si la request está autenticada y la cuenta tiene marca propia, usala.
+    Si no (demo sin login), cae al fallback (brand_id del body / demo-edu-latam)."""
+    account_id = getattr(request.state, "account_id", None)
+    if account_id:
+        try:
+            bid = get_account_brand_id(account_id)
+            if bid:
+                return bid
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("No se pudo resolver la marca de la cuenta: %s", exc)
+    return fallback
+
 # ── In-memory stores ───────────────────────────────────────────────────────
 _campaigns: dict[str, dict] = {}
 _conversations: dict[str, list[dict]] = {}
@@ -188,6 +203,28 @@ class ApproveRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_plan_size(self) -> "ApproveRequest":
+        import json
+        if len(json.dumps(self.plan)) > 20_000:
+            raise ValueError("plan payload demasiado grande")
+        return self
+
+
+class RefineRequest(BaseModel):
+    plan: dict
+    feedback: str
+
+    @field_validator("feedback")
+    @classmethod
+    def validate_feedback(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) < 2:
+            raise ValueError("Decime qué querés cambiar (ej: 'copy más directo', 'baja el presupuesto a 150').")
+        if len(v) > 500:
+            raise ValueError("feedback excede 500 caracteres")
+        return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", v)
+
+    @model_validator(mode="after")
+    def validate_plan_size(self) -> "RefineRequest":
         import json
         if len(json.dumps(self.plan)) > 20_000:
             raise ValueError("plan payload demasiado grande")
@@ -256,9 +293,10 @@ async def create_campaign(
         raise HTTPException(status_code=503, detail="Campaign agent no disponible")
 
     _check_injection(body.user_prompt)
+    brand_id = _resolve_brand_id(request, body.brand_id)
 
     async def generate():
-        async for chunk in run_campaign_agent(body.user_prompt, body.brand_id, platform_hint=body.platform_hint):
+        async for chunk in run_campaign_agent(body.user_prompt, brand_id, platform_hint=body.platform_hint):
             yield chunk
 
     return StreamingResponse(
@@ -297,6 +335,29 @@ async def approve_campaign(
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     return result
+
+
+@app.post("/campaign/refine")
+@limiter.limit("15/minute")
+async def refine_campaign(
+    request: Request,
+    body: RefineRequest,
+    _auth: None = Depends(require_api_key),
+) -> dict:
+    """Iteración agéntica: ajusta un plan existente según el feedback del usuario
+    con UNA sola llamada al LLM (el resto se recalcula determinísticamente)."""
+    if not _campaign_agent_available:
+        raise HTTPException(status_code=503, detail="Campaign agent no disponible")
+
+    _check_injection(body.feedback)
+    brand_id = _resolve_brand_id(request, body.plan.get("brand_id") or "demo-edu-latam")
+    try:
+        brand_config = get_brand_config(brand_id) or get_brand_config("demo-edu-latam")
+    except Exception:
+        brand_config = {}
+
+    updated = await refine_plan(body.plan, body.feedback, brand_config or {})
+    return updated
 
 
 @app.get("/campaign/{campaign_id}")
@@ -504,6 +565,72 @@ async def tally_webhook(request: Request) -> dict:
 
     logger.info("Whitelist entry saved: %s", entry.email)
     return {"ok": True, "email": entry.email}
+
+
+def _my_brand_id(request: Request) -> str:
+    """Resuelve (o provisiona) la marca de la cuenta autenticada."""
+    account_id = getattr(request.state, "account_id", None)
+    if not account_id:
+        raise HTTPException(status_code=401, detail="Iniciá sesión para gestionar tu marca")
+    brand_id = get_account_brand_id(account_id)
+    if not brand_id:
+        # Cuentas viejas (pre brand-por-cuenta) o provisión fallida: la creamos al vuelo.
+        from backend.auth.router import _provision_default_brand
+        acct = get_account_by_id(account_id) or {"id": account_id, "email": ""}
+        brand_id = _provision_default_brand(acct)
+    if not brand_id:
+        raise HTTPException(status_code=404, detail="No se pudo resolver la marca de la cuenta")
+    return brand_id
+
+
+class BrandUpdateRequest(BaseModel):
+    negocio_nombre: Optional[str] = None
+    negocio_industria: Optional[str] = None
+    propuesta_de_valor: Optional[str] = None
+    publico_paises: Optional[list[str]] = None
+    publico_edad_min: Optional[int] = None
+    publico_edad_max: Optional[int] = None
+    publico_intereses: Optional[list[str]] = None
+    presupuesto_min_campana_usd: Optional[float] = None
+    presupuesto_max_campana_usd: Optional[float] = None
+    tono_estilo: Optional[list[str]] = None
+    tono_evitar: Optional[list[str]] = None
+
+    @field_validator("publico_edad_min", "publico_edad_max")
+    @classmethod
+    def _age_range(cls, v: Optional[int]) -> Optional[int]:
+        if v is None:
+            return v
+        if not (13 <= v <= 65):
+            raise ValueError("la edad debe estar entre 13 y 65")
+        return v
+
+
+@app.get("/brand-config/me")
+@limiter.limit("30/minute")
+async def get_my_brand(request: Request, _auth: None = Depends(require_api_key)) -> dict:
+    config = get_brand_config(_my_brand_id(request))
+    if not config:
+        raise HTTPException(status_code=404, detail="Marca no encontrada")
+    return config
+
+
+@app.patch("/brand-config/me")
+@limiter.limit("30/minute")
+async def update_my_brand(
+    request: Request,
+    body: BrandUpdateRequest,
+    _auth: None = Depends(require_api_key),
+) -> dict:
+    brand_id = _my_brand_id(request)
+    data = {k: v for k, v in body.model_dump(exclude_none=True).items()}
+    if not data:
+        raise HTTPException(status_code=400, detail="No hay campos para actualizar")
+    update_brand_config(brand_id, data)
+    config = get_brand_config(brand_id)
+    if not config:
+        raise HTTPException(status_code=404, detail="Marca no encontrada")
+    return config
 
 
 @app.get("/brand-config/{brand_id}")
