@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { isBackendAlive, simulateMockStream, simulateMockLaunch } from '@/lib/mock-campaign';
-import { apiFetch, BACKEND } from '@/lib/api';
+import { apiFetch, BACKEND, parseErrorResponse } from '@/lib/api';
 
 export type ToolStatus = 'running' | 'done' | 'error';
 
@@ -36,6 +36,13 @@ export type Plan = {
     blockers: string[];
     checklist_results: Record<string, boolean>;
     rationale: string;
+  };
+  /** Recomendación de plataforma del agente (Meta/TikTok/Google) — el backend la
+   *  arma en _build_plan. Permite mostrar la plataforma REAL elegida, no un hardcode. */
+  platform_recommendation?: {
+    platform: 'meta' | 'tiktok' | 'google_ads';
+    confidence?: number;
+    rationale?: string;
   };
   duracion_dias: number;
 };
@@ -180,8 +187,19 @@ export function useCampaignStream() {
       }),
     });
 
-    if (!resp.ok || !resp.body) {
-      throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) {
+      const message = await parseErrorResponse(resp);
+      // Errores de validación del cliente (ej: prompt vago tipo "panti") NO deben
+      // caer al mock — mostramos el mensaje útil y cortamos sin gastar tokens.
+      if (resp.status === 400 || resp.status === 422) {
+        setErrorMsg(message);
+        setStatus('error');
+        return;
+      }
+      throw new Error(message);
+    }
+    if (!resp.body) {
+      throw new Error('Respuesta sin cuerpo del backend');
     }
 
     const reader = resp.body.getReader();
@@ -296,10 +314,13 @@ export function useCampaignStream() {
     }
 
     try {
+      // Inyectamos el prompt original al plan para que el backend lo persista
+      // (lo usa el detalle de campaña en el dashboard).
+      const planWithPrompt = { ...plan, user_prompt: lastPromptRef.current };
       const resp = await apiFetch('/campaign/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan }),
+        body: JSON.stringify({ plan: planWithPrompt }),
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const result: LaunchResult = await resp.json();

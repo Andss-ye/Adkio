@@ -70,10 +70,11 @@ def _generate_rationale(
         {
             "role": "system",
             "content": (
-                "Eres un experto en Meta Ads para educación ejecutiva en LATAM. "
-                "Explica en 2-3 oraciones concisas (español) por qué este presupuesto "
-                "es viable o no para una campaña en Meta. Sé directo y específico. "
-                "No repitas los números exactos que ya están en el output — da contexto de negocio."
+                "Eres un experto en publicidad digital (Meta, TikTok, Google) que asesora al "
+                "negocio del cliente según SU industria. Explica en 2-3 oraciones concisas (español) "
+                "por qué este presupuesto es viable o no para la campaña. Sé directo y específico al "
+                "rubro del cliente. No repitas los números exactos que ya están en el output — da "
+                "contexto de negocio."
             ),
         },
         {

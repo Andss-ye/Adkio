@@ -88,7 +88,15 @@ export default function AppPage() {
   const collapsed = collapseOverride ?? (vp.isMd || vp.isLg);
   const [overlayOpen, setOverlayOpen] = useState(false);
 
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(
+    () => sessionStorage.getItem('adkio.prefill_prompt') ?? '',
+  );
+  useEffect(() => {
+    // Si venimos de "Refinar" en el dashboard, limpiamos el prefill ya consumido.
+    if (sessionStorage.getItem('adkio.prefill_prompt')) {
+      sessionStorage.removeItem('adkio.prefill_prompt');
+    }
+  }, []);
   const [platformHint, setPlatformHint] = useState<PlatformHint>('auto');
   const [thread, setThread] = useState<ThreadMsg[]>([
     {
@@ -1175,7 +1183,9 @@ function DraftColumn({
   bordered: boolean;
 }) {
   const platform: 'meta' | 'tiktok' | 'google_ads' =
-    launchResult?.platform ?? (platformHint === 'auto' ? 'meta' : (platformHint as 'meta' | 'tiktok' | 'google_ads'));
+    launchResult?.platform ??
+    plan?.platform_recommendation?.platform ??
+    (platformHint === 'auto' ? 'meta' : (platformHint as 'meta' | 'tiktok' | 'google_ads'));
   const shortId = launchResult?.campaign_id
     ? `CMP-${launchResult.campaign_id.slice(-6).toUpperCase()}`
     : 'CMP-DRAFT';
@@ -1272,24 +1282,39 @@ function SummaryCard({
   const totalBudget = plan.budget?.presupuesto_diario_calculado != null
     ? plan.budget.presupuesto_diario_calculado * (plan.duracion_dias || 14)
     : 0;
+  const platformName = platform === 'meta' ? 'Meta' : platform === 'tiktok' ? 'TikTok' : 'Google';
+  const checklist = plan.validation?.checklist_results ?? {};
+  const checkTotal = Object.keys(checklist).length;
+  const checkPassed = Object.values(checklist).filter(Boolean).length;
+  const reco = plan.platform_recommendation;
   return (
     <ResultCard title="Summary">
       <SummaryRow label="Name" value={plan.copy?.headline ?? 'Untitled campaign'} />
       <SummaryRow
         label="Platform"
-        value={`${platform === 'meta' ? 'Meta' : platform === 'tiktok' ? 'TikTok' : 'Google'} · Conversions`}
+        value={`${platformName} · Leads`}
         icon={<PlatformIcon platform={platform} size={18} variant="ticker" />}
       />
-      <SummaryRow label="Flight" value={`${plan.duracion_dias} days`} />
+      <SummaryRow label="Geo" value={plan.targeting?.paises?.join(', ') || 'LATAM'} />
+      <SummaryRow label="Audience" value={`${plan.targeting?.edad_min}–${plan.targeting?.edad_max} años`} />
+      <SummaryRow label="Flight" value={`${plan.duracion_dias} días`} />
       <SummaryRow
         label="Budget"
         value={
           <span className="tab-num">
-            ${plan.budget?.presupuesto_diario_calculado?.toFixed(0) ?? '0'} / day · cap $
+            ${plan.budget?.presupuesto_diario_calculado?.toFixed(0) ?? '0'} / día · total $
             {totalBudget.toLocaleString('en-US', { maximumFractionDigits: 0 })}
           </span>
         }
       />
+      {checkTotal > 0 && (
+        <SummaryRow label="Validación" value={`${checkPassed}/${checkTotal} criterios OK`} />
+      )}
+      {reco?.rationale && (
+        <div style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5, paddingTop: 4 }}>
+          Por qué {platformName}: {reco.rationale}
+        </div>
+      )}
     </ResultCard>
   );
 }
@@ -1364,50 +1389,39 @@ function ArowItem({ label, value }: { label: string; value?: string }) {
 function CreativeCard({ plan }: { plan: NonNullable<ReturnType<typeof useCampaignStream>['plan']> }) {
   const c = plan.copy;
   if (!c) return null;
+  // Sin generación de imágenes todavía → mostramos el copy real (headline/body/CTA),
+  // no placeholders de creatividades vacías.
   return (
-    <ResultCard title="Creative variants">
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
-        {['9:16', '4:5', '1:1'].map((ratio, i) => (
-          <div
-            key={ratio}
-            style={{
-              aspectRatio: '9/16', borderRadius: 10,
-              border: i === 0 ? '1px solid rgba(126,182,255,.4)' : '1px solid var(--hairline)',
-              boxShadow: i === 0 ? '0 0 0 1px rgba(126,182,255,.15)' : 'none',
-              overflow: 'hidden', position: 'relative',
-              background: 'repeating-linear-gradient(45deg,#1F2226 0 8px,#1A1C20 8px 16px)',
-              display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-              padding: 8, minWidth: 0,
-            }}
-          >
-            <span
-              className="font-mono"
-              style={{
-                fontSize: 9.5,
-                color: i === 0 ? '#9cc4ff' : 'var(--text-3)',
-                background: i === 0 ? 'rgba(74,143,255,.18)' : 'rgba(0,0,0,.4)',
-                padding: '2px 5px', borderRadius: 4, alignSelf: 'flex-start',
-              }}
-            >
-              V{i + 1} · {ratio}
-            </span>
-            <span className="font-mono" style={{ fontSize: 10, color: 'var(--text-3)' }}>
-              {i === 0 ? 'hero · ' + c.cta : i === 1 ? 'product · grid' : 'UGC · stitched'}
-            </span>
-          </div>
-        ))}
-      </div>
+    <ResultCard title="Copy">
       <div
         style={{
-          padding: '10px 12px', borderRadius: 8,
+          padding: '12px 14px', borderRadius: 10,
           background: '#15171C', border: '1px solid var(--hairline-soft)',
-          fontSize: 12.5, color: 'var(--text-2)', lineHeight: 1.5, wordBreak: 'break-word',
+          fontSize: 13, color: 'var(--text-2)', lineHeight: 1.55, wordBreak: 'break-word',
+          display: 'flex', flexDirection: 'column', gap: 8,
         }}
       >
-        <b style={{ color: 'var(--text)', fontWeight: 500 }}>{c.headline}</b>
-        <br />
+        <b style={{ color: 'var(--text)', fontWeight: 600, fontSize: 14.5, lineHeight: 1.25 }}>
+          {c.headline}
+        </b>
         <span>{c.body}</span>
+        {c.cta && (
+          <span
+            style={{
+              alignSelf: 'flex-start', marginTop: 2,
+              fontSize: 11.5, padding: '4px 12px', borderRadius: 999,
+              border: '1px solid rgba(126,182,255,.35)', color: '#9cc4ff',
+            }}
+          >
+            {c.cta}
+          </span>
+        )}
       </div>
+      {c.rationale && (
+        <div style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5 }}>
+          {c.rationale}
+        </div>
+      )}
     </ResultCard>
   );
 }
@@ -1418,15 +1432,23 @@ function ForecastCard({
   plan: NonNullable<ReturnType<typeof useCampaignStream>['plan']>;
   launchResult: ReturnType<typeof useCampaignStream>['launchResult'];
 }) {
-  const leads = launchResult?.kpis?.expected_leads ?? Math.round((plan.targeting?.tamano_estimado ?? 0) * 0.001);
-  const cpl = launchResult?.kpis?.cpl_usd ?? 0;
+  const k = launchResult?.kpis;
+  const leads = k?.expected_leads ?? Math.round((plan.targeting?.tamano_estimado ?? 0) * 0.001);
+  const cpl = k?.cpl_usd ?? 0;
+  const cplRange =
+    k?.cpl_min_usd != null && k?.cpl_max_usd != null
+      ? `$${Math.round(k.cpl_min_usd)}–$${Math.round(k.cpl_max_usd)}`
+      : cpl > 0
+        ? `$${cpl.toFixed(0)}`
+        : '—';
   const budget = plan.budget?.presupuesto_diario_calculado ?? 0;
+  const totalBudget = budget * (plan.duracion_dias || 14);
   return (
-    <ResultCard title="Forecast (7 days)">
+    <ResultCard title="Forecast">
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
-        <Bcell label="Leads" value={`${leads}`} sub="+22% vs avg" up />
-        <Bcell label="CPL" value={cpl > 0 ? `$${cpl.toFixed(2)}` : '—'} sub="target $28" />
-        <Bcell label="Budget" value={`$${budget.toFixed(0)}/d`} sub="healthy" up />
+        <Bcell label="Leads est." value={`~${leads}`} sub={`en ${plan.duracion_dias} días`} up />
+        <Bcell label="CPL est." value={cplRange} sub="USD / lead" />
+        <Bcell label="Inversión" value={`$${budget.toFixed(0)}/d`} sub={`$${totalBudget.toFixed(0)} total`} />
       </div>
     </ResultCard>
   );
@@ -1501,7 +1523,12 @@ function DeployCard({
             New campaign
           </button>
           <button
-            onClick={() => (window.location.href = '/dashboard')}
+            onClick={() => {
+              if (launchResult?.campaign_id) {
+                sessionStorage.setItem('adkio.focus_campaign', launchResult.campaign_id);
+              }
+              window.location.href = '/dashboard';
+            }}
             style={{ ...ghostBtnStyle() }}
           >
             View dashboard

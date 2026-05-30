@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, parseErrorResponse } from '@/lib/api';
 import { isLoggedIn, getAccount, logout, type Account } from '@/lib/auth';
 import ConnectionCard, {
   type Platform,
@@ -96,8 +96,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
     try {
       const r = await apiFetch(`/connect/${platform}`);
       if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        setBanner({ text: err.detail ?? `Error HTTP ${r.status}`, tone: 'error' });
+        setBanner({ text: await parseErrorResponse(r), tone: 'error' });
         return;
       }
       const body = (await r.json()) as { authorize_url?: string };
@@ -142,8 +141,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
         body: JSON.stringify(payload),
       });
       if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        setBanner({ text: err.detail ?? `Error HTTP ${r.status}`, tone: 'error' });
+        setBanner({ text: await parseErrorResponse(r), tone: 'error' });
         return;
       }
       const meta = PLATFORM_META[platform];

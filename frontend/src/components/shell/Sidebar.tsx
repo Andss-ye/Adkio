@@ -4,6 +4,7 @@ import {
   IcPlus, IcConnections, IcInsights, IcReports,
   IcSupport, IcChevronLeft, IcClose,
 } from './icons';
+import LogoMark from '@/components/ui/LogoMark';
 
 export type SidebarSection =
   | 'dashboard'
@@ -164,28 +165,15 @@ export default function Sidebar({
           justifyContent: collapsed && !overlay ? 'center' : 'flex-start',
         }}
       >
+        {/* Logo real de Adkio — visible también colapsado (solo la marca). */}
+        <LogoMark className="w-7 h-7" />
         {(!collapsed || overlay) && (
-          <>
-            <div
-              style={{
-                width: 28, height: 28, borderRadius: 8,
-                background: 'linear-gradient(135deg, var(--accent), #9cc0f2 60%, #cfe2fb)',
-                display: 'grid', placeItems: 'center', flexShrink: 0,
-                boxShadow: '0 0 0 1px rgba(255,255,255,.06) inset, 0 6px 14px -8px var(--accent)',
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0A0F1A"
-                strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 17l5-6 4 4 7-9" />
-              </svg>
+          <div style={{ fontWeight: 600, letterSpacing: '-.01em', fontSize: 15, lineHeight: 1.15 }}>
+            Adkio
+            <div style={{ color: 'var(--text-3)', fontSize: 11, fontWeight: 500 }}>
+              Agent · v2.4
             </div>
-            <div style={{ fontWeight: 600, letterSpacing: '-.01em', fontSize: 15, lineHeight: 1.15 }}>
-              Adkio
-              <div style={{ color: 'var(--text-3)', fontSize: 11, fontWeight: 500 }}>
-                Agent · v2.4
-              </div>
-            </div>
-          </>
+          </div>
         )}
         <button
           onClick={overlay ? onCloseOverlay : onToggleCollapsed}

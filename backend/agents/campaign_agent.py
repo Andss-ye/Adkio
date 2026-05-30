@@ -152,10 +152,14 @@ Tu trabajo es convertir el pedido del usuario en un plan de campaña completo us
 4. copy_generator — copy alineado con la plataforma elegida
 5. campaign_validator — checklist final con toda la información
 
+Adaptás la campaña al negocio del cliente, sea cual sea su industria (e-commerce, SaaS, salud,
+educación, servicios locales, etc.). NO asumas un rubro: usá la industria y la propuesta de valor
+de la marca que se te dan en el contexto del usuario.
+
 Criterios de selección de plataforma (lo decide platform_recommender, pero entendelos):
-- **Meta (Instagram/Facebook):** leads B2B, educación ejecutiva, audiencias 28-55, real estate, finanzas. Default seguro para LATAM.
-- **TikTok:** awareness y alcance en audiencias 18-35, e-commerce visual, contenido viral. CPM bajo. Soft-delete (no permite hard-delete real).
-- **Google Ads:** intent activo (el usuario YA busca tu solución), B2B SaaS con keywords claros, comparativas de precio.
+- **Meta (Instagram/Facebook):** leads, e-commerce, marcas con audiencia amplia o B2B local. Default seguro para LATAM.
+- **TikTok:** awareness y alcance en audiencias jóvenes, e-commerce visual, contenido viral. CPM bajo. Soft-delete (no permite hard-delete real).
+- **Google Ads:** intent activo (el usuario YA busca tu solución), keywords claros, comparativas de precio.
 
 Mapeo canal según plataforma:
 - meta → "instagram" o "facebook"
@@ -166,7 +170,7 @@ Reglas:
 - Usa cada tool exactamente una vez, en ese orden
 - Infiere los parámetros del prompt del usuario — no pidas confirmación, actúa
 - Si el usuario no especifica duración, usa 14 días como default
-- Si la audiencia es de ejecutivos/fundadores, el nivel de consciencia es solution_aware
+- Ajustá el nivel de consciencia y la audiencia al producto real (no asumas ejecutivos por defecto)
 - Extrae el presupuesto del prompt (busca números, "dolares", "$", "USD")
 - El `canal` que pasás a copy_generator DEBE ser consistente con la plataforma que devolvió platform_recommender
 - Cuando termines el checklist final, NO respondas más — el plan está listo para aprobación humana
@@ -300,7 +304,8 @@ async def run_campaign_agent(
             "role": "user",
             "content": (
                 f"Marca: {brand_config['negocio_nombre']}\n"
-                f"Industria: {brand_config['negocio_industria']}\n\n"
+                f"Industria: {brand_config['negocio_industria']}\n"
+                f"Propuesta de valor: {brand_config.get('propuesta_de_valor', 'N/D')}\n\n"
                 f"Pedido del usuario: {user_prompt}{hint_line}"
             ),
         },
@@ -382,6 +387,16 @@ async def run_campaign_agent(
             if "campaign_validator" in tool_outputs:
                 plan = _build_plan(tool_outputs, brand_config)
                 yield _sse("plan_ready", {"plan": plan})
+                return
+            # El LLM respondió sin llamar tools y todavía no hay plan → el pedido
+            # no es accionable (input vago/ambiguo). Devolvemos el texto del modelo
+            # como aclaración en vez de cortar en silencio o seguir gastando tokens.
+            aclaracion = (
+                (msg.content or "").strip()
+                or "No pude inferir una campaña con eso. Contame qué querés "
+                "promocionar, con qué presupuesto y a quién."
+            )
+            yield _sse("error", {"message": aclaracion})
             return
 
     yield _sse("error", {"message": "El agente superó el número máximo de iteraciones."})

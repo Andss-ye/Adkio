@@ -55,6 +55,7 @@ from backend.db.supabase_client import (
     get_brand_config,
     list_campaigns,
     delete_campaign,
+    set_campaign_status,
 )
 from backend.auth.router import router as auth_router
 from backend.api.connections import router as connections_router
@@ -152,7 +153,16 @@ class CampaignRequest(BaseModel):
         if len(v) > _MAX_PROMPT_CHARS:
             raise ValueError(f"user_prompt excede {_MAX_PROMPT_CHARS} caracteres")
         # Strip control characters
-        v = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", v)
+        v = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", v).strip()
+        # Guard de input no accionable: una sola palabra suelta o texto muy corto
+        # (ej: "panti") hacía que el agente girara gastando tokens. Pedimos un
+        # mínimo de señal antes de invocar al LLM.
+        words = [w for w in re.split(r"\s+", v) if len(w) >= 2]
+        if len(v) < 10 or len(words) < 3:
+            raise ValueError(
+                "Contame qué querés promocionar, con qué presupuesto y a quién. "
+                "Ej: \"Vender curso de marketing a pymes en México, $300 por 14 días\"."
+            )
         return v
 
     @field_validator("brand_id")
@@ -322,13 +332,42 @@ async def remove_campaign(
     campaign_id: str,
     _auth: None = Depends(require_api_key),
 ) -> dict:
-    """Hard-delete a campaign row from Supabase."""
+    """Borrado lógico (soft-delete) de una campaña en Supabase."""
     if not re.match(r"^[a-zA-Z0-9_\-]{1,128}$", campaign_id):
         raise HTTPException(status_code=400, detail="campaign_id inválido")
     deleted = delete_campaign(campaign_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Campaign not found")
     return {"deleted": campaign_id}
+
+
+class CampaignStatusRequest(BaseModel):
+    status: str
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v: str) -> str:
+        v = v.strip().upper()
+        if v not in ("ACTIVE", "PAUSED"):
+            raise ValueError("status debe ser ACTIVE o PAUSED")
+        return v
+
+
+@app.patch("/campaigns/{campaign_id}")
+@limiter.limit("20/minute")
+async def update_campaign_status(
+    request: Request,
+    campaign_id: str,
+    body: CampaignStatusRequest,
+    _auth: None = Depends(require_api_key),
+) -> dict:
+    """Cambia el estado de una campaña (ACTIVE / PAUSED) — pausar/reanudar."""
+    if not re.match(r"^[a-zA-Z0-9_\-]{1,128}$", campaign_id):
+        raise HTTPException(status_code=400, detail="campaign_id inválido")
+    updated = set_campaign_status(campaign_id, body.status)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    return {"campaign_id": campaign_id, "status": body.status}
 
 
 # ── Onboarding endpoints ───────────────────────────────────────────────────

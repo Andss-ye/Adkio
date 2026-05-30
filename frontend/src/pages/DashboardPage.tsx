@@ -10,6 +10,7 @@ import {
   IcKebab, IcUp, IcDown, IcChevronRight, IcPlus,
 } from '@/components/shell/icons';
 import SettingsDrawer from '@/components/dashboard/SettingsDrawer';
+import CampaignDetailModal from '@/components/dashboard/CampaignDetailModal';
 
 type Status = 'Active' | 'Paused' | 'Draft' | 'Review';
 type Platform = 'meta' | 'tiktok' | 'google_ads';
@@ -27,6 +28,8 @@ type Campaign = {
   spark: number[];
   isMock?: boolean;
   createdAt?: string;
+  /** Registro crudo del backend — alimenta el modal de detalle (prompt, copy, audiencia). */
+  raw?: Record<string, unknown>;
 };
 
 function statusFromBackend(raw: string): Status {
@@ -79,6 +82,7 @@ function mapBackendCampaign(b: Record<string, unknown>, idx: number): Campaign {
     spark: syntheticSpark(seed, trend),
     isMock: Boolean(b.is_mock),
     createdAt: typeof b.created_at === 'string' ? b.created_at : undefined,
+    raw: b,
   };
 }
 
@@ -129,6 +133,9 @@ export default function DashboardPage() {
   const account = getAccount();
   const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
   const [now, setNow] = useState(() => new Date());
+  /** Campaña seleccionada para ver detalle (modal). null = cerrado. */
+  const [detail, setDetail] = useState<Campaign | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
 
   useEffect(() => {
     if (sessionStorage.getItem('adkio.open_settings_after_oauth') === '1') {
@@ -186,6 +193,17 @@ export default function DashboardPage() {
     }
   }, [logged]);
 
+  // Auto-abrir el detalle de la campaña recién creada (seteada desde /app al lanzar).
+  useEffect(() => {
+    const focusId = sessionStorage.getItem('adkio.focus_campaign');
+    if (!focusId || campaigns.length === 0) return;
+    const match = campaigns.find((c) => c.id === focusId || c.raw?.campaign_id === focusId);
+    if (match) {
+      setDetail(match);
+      sessionStorage.removeItem('adkio.focus_campaign');
+    }
+  }, [campaigns]);
+
   const counts = useMemo(
     () => ({
       all: campaigns.length,
@@ -240,6 +258,48 @@ export default function DashboardPage() {
     authLogout();
     setLogged(false);
     goTo('/');
+  };
+
+  // ── Acciones de detalle de campaña (Bug 2 + Impl 1) ──────────────────────
+  const openDetail = (c: Campaign) => setDetail(c);
+
+  const refineCampaign = (c: Campaign) => {
+    const prompt = typeof c.raw?.user_prompt === 'string' ? c.raw.user_prompt : '';
+    if (prompt) sessionStorage.setItem('adkio.prefill_prompt', prompt);
+    goTo('/app');
+  };
+
+  const togglePause = async (c: Campaign) => {
+    const nextStatus = c.status === 'Active' ? 'PAUSED' : 'ACTIVE';
+    setActionBusy(true);
+    try {
+      const r = await apiFetch(`/campaigns/${encodeURIComponent(c.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      if (r.ok) {
+        const newStatus = statusFromBackend(nextStatus);
+        setCampaigns((prev) => prev.map((x) => (x.id === c.id ? { ...x, status: newStatus } : x)));
+        setDetail((prev) => (prev && prev.id === c.id ? { ...prev, status: newStatus } : prev));
+      }
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const removeCampaign = async (c: Campaign) => {
+    if (!confirm(`¿Eliminar "${c.name}"? Se ocultará del workspace (borrado lógico, reversible).`)) return;
+    setActionBusy(true);
+    try {
+      const r = await apiFetch(`/campaigns/${encodeURIComponent(c.id)}`, { method: 'DELETE' });
+      if (r.ok) {
+        setCampaigns((prev) => prev.filter((x) => x.id !== c.id));
+        setDetail(null);
+      }
+    } finally {
+      setActionBusy(false);
+    }
   };
 
   const userName = account?.email?.split('@')[0] ?? 'Demo';
@@ -438,9 +498,9 @@ export default function DashboardPage() {
             ) : filtered.length === 0 ? (
               <EmptyState onNew={() => goTo('/app')} />
             ) : vp.isSm ? (
-              <CampaignsListMobile rows={filtered} onRowClick={() => goTo('/app')} />
+              <CampaignsListMobile rows={filtered} onRowClick={openDetail} />
             ) : (
-              <CampaignsTable rows={filtered} onRowClick={() => goTo('/app')} compact={vp.isMd} />
+              <CampaignsTable rows={filtered} onRowClick={openDetail} compact={vp.isMd} />
             )}
           </div>
           )}
@@ -448,6 +508,17 @@ export default function DashboardPage() {
       </main>
 
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      {detail && (
+        <CampaignDetailModal
+          campaign={detail}
+          busy={actionBusy}
+          onClose={() => setDetail(null)}
+          onTogglePause={() => togglePause(detail)}
+          onDelete={() => removeCampaign(detail)}
+          onRefine={() => refineCampaign(detail)}
+        />
+      )}
     </div>
   );
 }

@@ -88,17 +88,19 @@ def _llm_summary(
             "role": "system",
             "content": (
                 "Eres un estratega de marketing digital. Escribe un párrafo de 2-3 oraciones "
-                "(español) resumiendo esta campaña de Meta Ads para educación ejecutiva. "
-                "Sé específico con los números. Tono profesional y directo."
+                "(español) resumiendo esta campaña publicitaria para el negocio del cliente, en la "
+                "plataforma indicada. Sé específico con los números (alcance, presupuesto, países). "
+                "Tono profesional y directo. No asumas un rubro específico."
             ),
         },
         {
             "role": "user",
             "content": (
+                f"Plataforma: {campaign_result.get('platform', 'meta')}\n"
                 f"Headline: {copy_out.get('headline', '')}\n"
                 f"Alcance estimado: {campaign_result.get('estimated_reach', 'N/A')}\n"
                 f"Presupuesto diario: ${budget_out.get('presupuesto_diario_calculado', 0)}/día\n"
-                f"Audiencia: {audience_out.get('intereses', [])[:3]}\n"
+                f"Audiencia: {audience_out.get('intereses', [])[:3]} | Edad {audience_out.get('edad_min')}-{audience_out.get('edad_max')}\n"
                 f"Países: {audience_out.get('paises', [])}"
             ),
         },

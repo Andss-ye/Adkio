@@ -40,3 +40,6 @@ supabase/.temp/
 # Claude Code agents/skills (herramienta local)
 .agents/
 skills-lock.json
+
+# TS incremental build info (artefacto)
+*.tsbuildinfo
