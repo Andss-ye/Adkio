@@ -16,7 +16,10 @@ os.environ.setdefault("LLM_MODEL", "groq/llama-3.3-70b-versatile")
 
 from backend.main import app, _campaigns
 
-client = TestClient(app)
+# raise_server_exceptions=False: queremos que los errores del servidor lleguen como
+# respuestas 500 (vía el exception handler), no que se re-lancen al test —
+# comportamiento que cambió en versiones recientes de Starlette.
+client = TestClient(app, raise_server_exceptions=False)
 
 
 # ── /health ────────────────────────────────────────────────────────────────
@@ -54,24 +57,24 @@ class TestCreateCampaign:
             ("plan_ready", {"plan": {"copy": {}, "targeting": {}, "budget": {}, "validation": {}, "duracion_dias": 14}}),
         ]
         with patch("backend.main.run_campaign_agent", self._mock_agent(fake_events)):
-            r = client.post("/campaign", json={"user_prompt": "test", "brand_id": "demo-edu-latam"})
+            r = client.post("/campaign", json={"user_prompt": "Promocionar nuestro curso a pymes en Mexico, 300 dolares por 14 dias", "brand_id": "demo-edu-latam"})
         assert r.status_code == 200
 
     def test_content_type_is_event_stream(self):
         fake_events = [("plan_ready", {"plan": {}})]
         with patch("backend.main.run_campaign_agent", self._mock_agent(fake_events)):
-            r = client.post("/campaign", json={"user_prompt": "test"})
+            r = client.post("/campaign", json={"user_prompt": "Promocionar nuestro curso a pymes en Mexico, 300 dolares por 14 dias"})
         assert "text/event-stream" in r.headers["content-type"]
 
     def test_default_brand_id_is_demo(self):
         captured = {}
 
-        async def capture_agent(user_prompt, brand_id):
+        async def capture_agent(user_prompt, brand_id, platform_hint=None):
             captured["brand_id"] = brand_id
             yield "event: plan_ready\ndata: {\"plan\": {}}\n\n"
 
         with patch("backend.main.run_campaign_agent", capture_agent):
-            client.post("/campaign", json={"user_prompt": "test"})
+            client.post("/campaign", json={"user_prompt": "Promocionar nuestro curso a pymes en Mexico, 300 dolares por 14 dias"})
 
         assert captured["brand_id"] == "demo-edu-latam"
 
@@ -82,7 +85,7 @@ class TestCreateCampaign:
             ("plan_ready", {"plan": {}}),
         ]
         with patch("backend.main.run_campaign_agent", self._mock_agent(fake_events)):
-            r = client.post("/campaign", json={"user_prompt": "test"})
+            r = client.post("/campaign", json={"user_prompt": "Promocionar nuestro curso a pymes en Mexico, 300 dolares por 14 dias"})
 
         content = r.text
         assert "tool_start" in content

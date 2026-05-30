@@ -124,7 +124,9 @@ def test_launcher_falls_back_to_mock_without_creds():
     )
     assert result["platform"] == "tiktok"
     assert result["status"] == "PAUSED"
-    assert "mock" in result["campaign_id"].lower()
+    # El fallback usa id "{platform}_demo_{ts}" y marca is_mock=True
+    assert result["is_mock"] is True
+    assert "demo" in result["campaign_id"].lower()
     assert "mock" in result["rationale"].lower()
 
 
@@ -213,7 +215,8 @@ def test_launcher_unknown_platform_falls_back_to_mock():
         platform="linkedin",  # no soportada
         resolver=resolver,
     )
-    assert "mock" in result["campaign_id"].lower()
+    assert result["is_mock"] is True
+    assert "demo" in result["campaign_id"].lower()
 
 
 # ── campaign_remover ───────────────────────────────────────────────────────

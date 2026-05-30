@@ -22,14 +22,18 @@ def copy_generator(
         {
             "role": "system",
             "content": (
-                "Eres un redactor experto en Meta Ads para educación ejecutiva en LATAM. "
-                "Genera copy que convierte. El texto debe sentirse escrito por un ser humano, "
-                "no por IA. Devuelve SOLO un JSON con esta estructura exacta:\n"
+                "Eres un redactor publicitario experto que escribe para cualquier industria y "
+                "para el canal específico de cada campaña (Instagram, Facebook, TikTok, Google "
+                "Search, YouTube). Adaptá el tono al canal: TikTok más informal y nativo, Google "
+                "Search más directo a la intención, Instagram/Facebook más visual y aspiracional. "
+                "Genera copy que convierte y que se sienta escrito por un humano, no por IA. "
+                "Devuelve SOLO un JSON con esta estructura exacta:\n"
                 '{"headline": "str", "body": "str", "cta": "str", "rationale": "str"}\n'
                 "headline: máx 40 caracteres, impacto inmediato.\n"
                 "body: 2-3 oraciones, sin bullet points, voz directa.\n"
-                "cta: 2-4 palabras en imperativo (ej: 'Reserva tu lugar').\n"
-                "rationale: 2 oraciones en español explicando las decisiones creativas.\n"
+                "cta: 2-4 palabras en imperativo (ej: 'Reserva tu lugar', 'Comprá ahora').\n"
+                "rationale: 2 oraciones en español explicando las decisiones creativas para ESTE "
+                "producto y canal.\n"
                 "No incluyas texto fuera del JSON."
             ),
         },
@@ -62,8 +66,8 @@ def copy_generator(
         }
     except Exception:
         return {
-            "headline": f"Transforma tu liderazgo en {producto[:20]}",
-            "body": "Los mejores líderes no crecen solos. Crecen con los correctos.",
-            "cta": "Reserva tu lugar",
-            "rationale": "Copy directo y aspiracional alineado con el tono de marca aprobado.",
+            "headline": producto[:38] if producto else "Descubrí lo que preparamos",
+            "body": "Una propuesta pensada para vos. Conocé los detalles y dá el primer paso hoy.",
+            "cta": "Más información",
+            "rationale": "Copy directo alineado al tono de marca y al canal elegido.",
         }

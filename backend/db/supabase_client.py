@@ -138,25 +138,62 @@ def list_campaigns(
     - Si no hay `account_id` pero hay `brand_id` → backward-compat single-tenant.
     """
     client = _get_client()
-    q = (
-        client.table("campaigns")
-        .select("*")
-        .order("created_at", desc=True)
-        .limit(limit)
-    )
-    if account_id:
-        q = q.eq("account_id", account_id)
-    elif brand_id:
-        q = q.eq("brand_id", brand_id)
-    return q.execute().data or []
+
+    def _build(with_soft_delete: bool):
+        q = client.table("campaigns").select("*").order("created_at", desc=True).limit(limit)
+        if with_soft_delete:
+            q = q.is_("deleted_at", "null")  # ocultar borradas lógicamente
+        if account_id:
+            q = q.eq("account_id", account_id)
+        elif brand_id:
+            q = q.eq("brand_id", brand_id)
+        return q
+
+    # Resiliencia: si la migración 004 (deleted_at) todavía no se aplicó, el filtro
+    # rompería con un error de columna inexistente. En ese caso reintentamos sin él.
+    try:
+        return _build(True).execute().data or []
+    except Exception:
+        return _build(False).execute().data or []
 
 
 def delete_campaign(campaign_id: str) -> bool:
-    """Hard-delete a campaign by its Supabase UUID or Meta campaign_id. Returns True if deleted."""
+    """Soft-delete: marca `deleted_at` por UUID de Supabase o por campaign_id.
+
+    Reversible — la fila no se borra, solo se oculta del listado. Retorna True
+    si se afectó alguna fila.
+    """
+    from datetime import datetime, timezone
+
     client = _get_client()
-    # Try by Supabase row id first, then by campaign_id column (Meta format)
-    result = client.table("campaigns").delete().eq("id", campaign_id).execute()
+    now = datetime.now(timezone.utc).isoformat()
+    # Por UUID de la fila primero, luego por la columna campaign_id (formato Meta)
+    result = (
+        client.table("campaigns").update({"deleted_at": now}).eq("id", campaign_id).execute()
+    )
     if result.data:
         return True
-    result = client.table("campaigns").delete().eq("campaign_id", campaign_id).execute()
+    result = (
+        client.table("campaigns")
+        .update({"deleted_at": now})
+        .eq("campaign_id", campaign_id)
+        .execute()
+    )
+    return bool(result.data)
+
+
+def set_campaign_status(campaign_id: str, status: str) -> bool:
+    """Actualiza el estado (ACTIVE / PAUSED) de una campaña. Retorna True si afectó filas."""
+    client = _get_client()
+    result = (
+        client.table("campaigns").update({"status": status}).eq("id", campaign_id).execute()
+    )
+    if result.data:
+        return True
+    result = (
+        client.table("campaigns")
+        .update({"status": status})
+        .eq("campaign_id", campaign_id)
+        .execute()
+    )
     return bool(result.data)

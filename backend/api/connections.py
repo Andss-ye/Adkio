@@ -456,13 +456,26 @@ async def manual_connect(
 
     refresh_enc = encrypt_token(body.refresh_token) if body.refresh_token else None
 
-    upsert_connection(
-        account_id=aid,
-        platform=platform,
-        provider_account_id=pid,
-        access_token_encrypted=encrypt_token(access),
-        refresh_token_encrypted=refresh_enc,
-        extra=extra,
-        scopes=[],
-    )
+    try:
+        upsert_connection(
+            account_id=aid,
+            platform=platform,
+            provider_account_id=pid,
+            access_token_encrypted=encrypt_token(access),
+            refresh_token_encrypted=refresh_enc,
+            extra=extra,
+            scopes=[],
+        )
+    except Exception as exc:  # noqa: BLE001 — queremos un mensaje claro al usuario
+        import logging
+
+        logging.getLogger(__name__).exception("manual_connect falló al persistir")
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "No se pudo guardar la conexión. Verificá que la tabla "
+                "platform_connections exista (migración 001) y que Supabase "
+                "esté accesible."
+            ),
+        ) from exc
     return {"ok": True, "platform": platform, "provider_account_id": pid}

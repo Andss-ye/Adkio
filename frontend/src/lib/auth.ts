@@ -7,7 +7,7 @@
  *   POST /auth/refresh
  *   GET  /auth/me  (Bearer)
  */
-import { apiFetch } from './api';
+import { apiFetch, parseErrorResponse } from './api';
 
 const ACCESS_KEY = 'adkio.access_token';
 const REFRESH_KEY = 'adkio.refresh_token';
@@ -63,8 +63,7 @@ async function postJson<T>(path: string, body: object): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }));
-    throw new Error(err.detail ?? `HTTP ${resp.status}`);
+    throw new Error(await parseErrorResponse(resp));
   }
   return (await resp.json()) as T;
 }
