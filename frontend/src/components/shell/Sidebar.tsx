@@ -1,8 +1,7 @@
 import { useEffect } from 'react';
 import {
   IcDashboard, IcList, IcActive, IcDraft, IcSaved,
-  IcPlus, IcConnections, IcInsights, IcReports,
-  IcSupport, IcChevronLeft, IcClose,
+  IcPlus, IcConnections, IcChevronLeft, IcClose,
 } from './icons';
 import LogoMark from '@/components/ui/LogoMark';
 
@@ -13,9 +12,7 @@ export type SidebarSection =
   | 'drafts'
   | 'saved'
   | 'new'
-  | 'connections'
-  | 'insights'
-  | 'reports';
+  | 'connections';
 
 type Counts = {
   all?: number;
@@ -248,29 +245,7 @@ export default function Sidebar({
         </nav>
       </div>
 
-      {/* Others */}
-      <div style={{ padding: '10px 0', borderTop: '1px solid var(--hairline-soft)' }}>
-        {grpLabel('Others')}
-        <nav className="flex flex-col" style={{ gap: 2 }}>
-          {navItem(
-            'insights', IcInsights, 'Insights', undefined,
-            (!collapsed || overlay) && (
-              <span
-                style={{
-                  fontSize: 9.5, letterSpacing: '.08em', textTransform: 'uppercase',
-                  color: 'var(--accent-ink)', background: 'var(--accent)',
-                  padding: '2px 6px', borderRadius: 5, fontWeight: 600,
-                }}
-              >
-                Beta
-              </span>
-            ),
-          )}
-          {navItem('reports', IcReports, 'Reports')}
-        </nav>
-      </div>
-
-      {/* Footer card + support */}
+      {/* Footer card */}
       <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 8 }}>
         {(!collapsed || overlay) && (
           <div
@@ -290,9 +265,10 @@ export default function Sidebar({
                 opacity: 0.55,
               }}
             />
-            <h4 style={{ margin: '0 0 4px', fontSize: 13.5, fontWeight: 600 }}>Auto-optimize ON</h4>
+            <h4 style={{ margin: '0 0 4px', fontSize: 13.5, fontWeight: 600 }}>Conectá tus plataformas</h4>
             <p style={{ margin: '0 0 12px', color: 'var(--text-2)', fontSize: 12, lineHeight: 1.5 }}>
-              Adkio is rebalancing your active campaigns across connected platforms.
+              Conectá Meta, TikTok o Google para lanzar campañas reales. Sin conectar, Adkio las
+              simula en un sandbox (no gasta dinero).
             </p>
             <button
               onClick={onOpenSettings}
@@ -302,32 +278,10 @@ export default function Sidebar({
                 cursor: 'pointer', border: 0,
               }}
             >
-              View activity
+              Conectar
             </button>
           </div>
         )}
-        <button
-          onClick={onOpenSettings}
-          className="text-left"
-          style={{
-            display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-2)',
-            padding: collapsed && !overlay ? 10 : '9px 10px', borderRadius: 10, fontSize: 13,
-            background: 'transparent', border: 0, cursor: 'pointer',
-            justifyContent: collapsed && !overlay ? 'center' : 'flex-start',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = '#15161A';
-            e.currentTarget.style.color = 'var(--text)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = 'var(--text-2)';
-          }}
-          title={collapsed && !overlay ? 'Support' : undefined}
-        >
-          <IcSupport width={16} height={16} />
-          {(!collapsed || overlay) && <span>Support</span>}
-        </button>
       </div>
     </aside>
   );

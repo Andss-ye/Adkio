@@ -225,6 +225,11 @@ export default function SettingsDrawer({ open, onClose }: Props) {
                 <strong className="text-white/70">Adkio elige la mejor plataforma</strong> según tu
                 objetivo, audiencia y presupuesto.
               </div>
+              <div className="text-[11px] text-amber-200/80 leading-relaxed px-3 py-2 rounded-lg bg-amber-500/[0.06] border border-amber-500/20">
+                La conexión por OAuth está en revisión con las plataformas. Por ahora usá{' '}
+                <strong>“Conectar con API key manual”</strong>. <strong>Meta</strong> se valida en vivo
+                contra su API; TikTok y Google quedan en modo sandbox (sin verificar) hasta aprobar OAuth.
+              </div>
 
               {banner && (
                 <div

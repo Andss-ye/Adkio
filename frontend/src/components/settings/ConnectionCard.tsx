@@ -147,6 +147,25 @@ export default function ConnectionCard({ platform, connection, loading, busy, on
                 Conectada
               </span>
             )}
+            {isConnected && connection && (
+              connection.last_validated_at ? (
+                <span
+                  className="inline-flex items-center gap-1 text-[9px] uppercase tracking-widest font-semibold px-1.5 py-0.5 rounded-full"
+                  style={{ background: 'rgba(16,185,129,0.10)', color: '#10b981', border: '1px solid rgba(16,185,129,0.30)' }}
+                  title="El token fue validado contra la plataforma"
+                >
+                  ✓ Verificada
+                </span>
+              ) : (
+                <span
+                  className="inline-flex items-center gap-1 text-[9px] uppercase tracking-widest font-semibold px-1.5 py-0.5 rounded-full"
+                  style={{ background: 'rgba(245,158,11,0.10)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.30)' }}
+                  title="Guardada pero no validada contra la plataforma — modo sandbox"
+                >
+                  Sin verificar
+                </span>
+              )
+            )}
           </div>
 
           {isConnected && connection ? (

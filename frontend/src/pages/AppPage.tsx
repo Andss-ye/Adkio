@@ -7,7 +7,7 @@ import Sidebar, { type SidebarSection } from '@/components/shell/Sidebar';
 import TopBar from '@/components/shell/TopBar';
 import PlatformIcon from '@/components/shell/PlatformIcon';
 import {
-  IcSparkle, IcCheck, IcReset, IcArrowRight, IcSend, IcMic, IcPlus,
+  IcSparkle, IcCheck, IcReset, IcArrowRight, IcSend,
   IcChevronDown,
 } from '@/components/shell/icons';
 import SettingsDrawer from '@/components/dashboard/SettingsDrawer';
@@ -679,9 +679,6 @@ function ChatColumn({
                 position: 'relative', zIndex: 1, flexWrap: 'wrap',
               }}
             >
-              <button style={composerCircleBtn()} title="Attach">
-                <IcPlus width={13} height={13} />
-              </button>
               <PlatformPicker
                 value={platformHint}
                 onChange={onPlatformHint}
@@ -689,9 +686,6 @@ function ChatColumn({
                 setOpen={setOpenPlatform}
               />
               <span style={{ flex: 1 }} />
-              <button style={composerCircleBtn(true)} title="Voice (coming soon)">
-                <IcMic width={13} height={13} />
-              </button>
               <button
                 onClick={onSend}
                 disabled={isStreaming || !input.trim()}
@@ -852,16 +846,6 @@ function PlatformPicker({
       )}
     </>
   );
-}
-
-function composerCircleBtn(noBorder?: boolean): React.CSSProperties {
-  return {
-    width: 28, height: 28, borderRadius: '50%',
-    background: noBorder ? 'transparent' : 'rgba(255,255,255,.04)',
-    border: noBorder ? 0 : '1px solid rgba(255,255,255,.06)',
-    display: 'grid', placeItems: 'center',
-    color: 'var(--text-2)', cursor: 'pointer',
-  };
 }
 
 function composerPillBtn(): React.CSSProperties {
@@ -1569,7 +1553,18 @@ function DeployCard({
   return (
     <ResultCard title="Ready to deploy" accent>
       <p style={{ margin: 0, color: 'var(--text-2)', fontSize: 12.5, lineHeight: 1.55 }}>
-        Adkio crea la campaña en estado <b style={{ color: 'var(--text)' }}>PAUSED</b> para que la revises.
+        Al deployar, Adkio <b style={{ color: 'var(--text)' }}>guarda la campaña</b> en tu workspace y
+        la crea en estado <b style={{ color: 'var(--text)' }}>PAUSED</b> para que la revises.
+      </p>
+      {!isLoggedIn() && (
+        <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.5, color: '#E8B260' }}>
+          ⚠ No iniciaste sesión: la campaña no quedará guardada en tu workspace.{' '}
+          <a href="/login" style={{ color: '#E8B260', textDecoration: 'underline' }}>Iniciá sesión</a> para guardarla.
+        </p>
+      )}
+      <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.5, color: 'var(--text-3)' }}>
+        Sin <b style={{ color: 'var(--text-2)' }}>{platform === 'meta' ? 'Meta' : platform === 'tiktok' ? 'TikTok' : 'Google'}</b> conectado,
+        se crea en nuestro <b style={{ color: 'var(--text-2)' }}>sandbox</b> (no gasta dinero). Conectá tu cuenta en Conexiones para lanzar real.
       </p>
       <p
         style={{

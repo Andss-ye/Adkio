@@ -999,10 +999,11 @@ function EmptyState({ onNew }: { onNew: () => void }) {
         />
       </div>
       <h3 style={{ margin: 0, fontSize: 20, letterSpacing: '-.015em', fontWeight: 600 }}>
-        No campaigns match
+        Todavía no hay campañas acá
       </h3>
-      <p style={{ margin: 0, color: 'var(--text-2)', maxWidth: 380, fontSize: 13.5 }}>
-        Try a different filter or kick off a new campaign with Adkio.
+      <p style={{ margin: 0, color: 'var(--text-2)', maxWidth: 420, fontSize: 13.5, lineHeight: 1.55 }}>
+        Las campañas aparecen acá <b style={{ color: 'var(--text)' }}>después de deployarlas</b> (no al
+        solo generar el plan). Generá una con Adkio y tocá “Deploy” para guardarla en tu workspace.
       </p>
       <button
         onClick={onNew}
