@@ -45,6 +45,8 @@ export type Plan = {
     rationale?: string;
   };
   duracion_dias: number;
+  /** Resumen del último refinamiento agéntico (qué cambió y por qué). */
+  change_summary?: string;
 };
 
 export type StreamStatus =
@@ -116,6 +118,8 @@ export function useCampaignStream() {
   const [launchResult, setLaunchResult] = useState<LaunchResult | null>(null);
   const [mode, setMode] = useState<StreamMode>('live');
   const [backendHealth, setBackendHealth] = useState<BackendHealth>('checking');
+  const [refining, setRefining] = useState(false);
+  const [refineCount, setRefineCount] = useState(0);
   const lastPromptRef = useRef<string>('');
 
   /* Health check al mount + cada 30s para que el usuario vea claramente si
@@ -142,6 +146,8 @@ export function useCampaignStream() {
     setStatus('idle');
     setErrorMsg(null);
     setLaunchResult(null);
+    setRefining(false);
+    setRefineCount(0);
   }, []);
 
   /* ─── Mock streaming runner ────────────────────────────── */
@@ -340,6 +346,38 @@ export function useCampaignStream() {
     }
   }, [plan, mode]);
 
+  /* ─── Public: refineCampaign (iteración agéntica) ──────────
+     Ajusta el plan actual con UNA llamada al backend (1 LLM call). No reinicia
+     el flujo ni pierde lo generado. Devuelve un resumen del cambio para el chat. */
+  const refineCampaign = useCallback(
+    async (feedback: string): Promise<{ ok: boolean; summary?: string; error?: string }> => {
+      if (!plan) return { ok: false, error: 'Todavía no hay un plan para ajustar.' };
+      if (mode === 'mock') {
+        return { ok: false, error: 'El ajuste necesita el backend en vivo (ahora estás en modo demo).' };
+      }
+      setRefining(true);
+      try {
+        const resp = await apiFetch('/campaign/refine', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plan, feedback }),
+        });
+        if (!resp.ok) {
+          return { ok: false, error: await parseErrorResponse(resp) };
+        }
+        const updated = (await resp.json()) as Plan;
+        setPlan(updated);
+        setRefineCount((n) => n + 1);
+        return { ok: true, summary: updated.change_summary };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : 'Error al ajustar el plan' };
+      } finally {
+        setRefining(false);
+      }
+    },
+    [plan, mode],
+  );
+
   return {
     toolEvents,
     plan,
@@ -348,8 +386,11 @@ export function useCampaignStream() {
     launchResult,
     mode,
     backendHealth,
+    refining,
+    refineCount,
     startStream,
     approveCampaign,
+    refineCampaign,
     reset,
   };
 }

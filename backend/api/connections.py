@@ -33,6 +33,7 @@ from backend.auth.jwt_tokens import decode_token
 from backend.db.platform_connections import (
     delete_connection,
     list_connections,
+    mark_validated,
     upsert_connection,
 )
 from backend.security.token_crypto import encrypt_token
@@ -216,7 +217,10 @@ async def tiktok_authorize(request: Request) -> dict:
         "TIKTOK_OAUTH_REDIRECT_URI", "http://localhost:8000/connect/tiktok/callback"
     )
     if not app_id:
-        raise HTTPException(status_code=500, detail="TIKTOK_APP_ID no configurada")
+        raise HTTPException(
+            status_code=400,
+            detail="La conexión OAuth con TikTok todavía no está habilitada. Usá “Conectar con API key manual”.",
+        )
     params = {"app_id": app_id, "redirect_uri": redirect, "state": _sign_state(aid)}
     return {
         "authorize_url": f"https://business-api.tiktok.com/portal/auth?{urlencode(params)}"
@@ -284,7 +288,10 @@ async def google_authorize(request: Request) -> dict:
         "http://localhost:8000/connect/google_ads/callback",
     )
     if not client_id:
-        raise HTTPException(status_code=500, detail="GOOGLE_OAUTH_CLIENT_ID no configurada")
+        raise HTTPException(
+            status_code=400,
+            detail="La conexión OAuth con Google Ads todavía no está habilitada. Usá “Conectar con API key manual”.",
+        )
     params = {
         "client_id": client_id,
         "redirect_uri": redirect,
@@ -411,6 +418,35 @@ class _ManualConnectBody(__import__("pydantic").BaseModel):
 _VALID_MANUAL_PLATFORMS = ("meta", "tiktok", "google_ads")
 
 
+async def _validate_meta_token(access_token: str, ad_account_id: str) -> tuple[bool, str]:
+    """Valida el access_token de Meta contra la Graph API (no aceptamos cualquier cosa).
+
+    Devuelve (ok, mensaje). Verifica que el token sea válido y que tenga acceso al
+    ad account indicado.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            me = await client.get(
+                "https://graph.facebook.com/v20.0/me",
+                params={"access_token": access_token, "fields": "id"},
+            )
+            if me.status_code != 200:
+                err = me.json().get("error", {}).get("message", "token inválido")
+                return False, f"El access_token de Meta no es válido: {err}"
+            acct = await client.get(
+                f"https://graph.facebook.com/v20.0/{ad_account_id}",
+                params={"access_token": access_token, "fields": "account_id,name"},
+            )
+            if acct.status_code != 200:
+                err = acct.json().get("error", {}).get("message", "sin acceso")
+                return False, (
+                    f"El token es válido pero no tiene acceso al ad account {ad_account_id}: {err}"
+                )
+        return True, "ok"
+    except httpx.HTTPError as exc:
+        return False, f"No se pudo validar contra Meta: {str(exc)[:80]}"
+
+
 @router.post("/{platform}/manual")
 async def manual_connect(
     request: Request, platform: str, body: _ManualConnectBody
@@ -454,6 +490,17 @@ async def manual_connect(
         extra.setdefault("client_id", os.environ.get("GOOGLE_OAUTH_CLIENT_ID", ""))
         extra.setdefault("client_secret", os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", ""))
 
+    # Validación real: Meta se valida contra la Graph API (no aceptamos basura).
+    # TikTok/Google quedan "sin verificar" (no tenemos forma de validarlos sin OAuth
+    # aprobado) — el frontend lo muestra honestamente, sin fingir "conectada".
+    verified = False
+    if platform == "meta":
+        ok, msg = await _validate_meta_token(access, pid)
+        if not ok:
+            raise HTTPException(status_code=400, detail=msg)
+        verified = True
+    extra["verified"] = verified
+
     refresh_enc = encrypt_token(body.refresh_token) if body.refresh_token else None
 
     try:
@@ -466,6 +513,10 @@ async def manual_connect(
             extra=extra,
             scopes=[],
         )
+        if verified:
+            mark_validated(aid, platform)
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001 — queremos un mensaje claro al usuario
         import logging
 
@@ -478,4 +529,4 @@ async def manual_connect(
                 "esté accesible."
             ),
         ) from exc
-    return {"ok": True, "platform": platform, "provider_account_id": pid}
+    return {"ok": True, "platform": platform, "provider_account_id": pid, "verified": verified}
