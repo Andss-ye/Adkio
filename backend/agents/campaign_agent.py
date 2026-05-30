@@ -268,6 +268,7 @@ def _default_canal_for(platform: str) -> str:
 async def run_campaign_agent(
     user_prompt: str,
     brand_id: str,
+    platform_hint: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Runs the campaign agent and yields SSE events.
@@ -285,6 +286,14 @@ async def run_campaign_agent(
         return
     tool_outputs: dict = {}
 
+    hint_line = ""
+    if platform_hint in ("meta", "tiktok", "google_ads"):
+        hint_line = (
+            f"\n\nIMPORTANTE: El usuario seleccionó manualmente la plataforma '{platform_hint}'. "
+            f"Cuando llames platform_recommender, debés respetar esa elección — "
+            f"el sistema va a forzar platform={platform_hint} aunque el scoring sugiera otra."
+        )
+
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
         {
@@ -292,7 +301,7 @@ async def run_campaign_agent(
             "content": (
                 f"Marca: {brand_config['negocio_nombre']}\n"
                 f"Industria: {brand_config['negocio_industria']}\n\n"
-                f"Pedido del usuario: {user_prompt}"
+                f"Pedido del usuario: {user_prompt}{hint_line}"
             ),
         },
     ]
@@ -329,6 +338,22 @@ async def run_campaign_agent(
 
                 if tool_name == "budget_validator":
                     tool_outputs["_duracion_dias"] = tool_args.get("duracion_dias", 14)
+
+                # Override del recommender si el usuario forzó plataforma
+                if (
+                    tool_name == "platform_recommender"
+                    and platform_hint in ("meta", "tiktok", "google_ads")
+                    and result.get("platform") != platform_hint
+                ):
+                    original = result.get("platform")
+                    result["platform"] = platform_hint
+                    result["confidence"] = 1.0
+                    result["rationale"] = (
+                        f"Plataforma forzada por el usuario: **{platform_hint}**. "
+                        f"(El recomendador automático hubiera elegido {original}.)"
+                    )
+                    result["user_forced"] = True
+                    tool_outputs["platform_recommender"] = result
 
                 yield _sse("tool_result", {"tool": tool_name, "result": result})
 
@@ -419,9 +444,12 @@ async def approve_and_launch(plan: dict) -> dict:
         from backend.db.supabase_client import create_campaign_result
         kpis = campaign_result.get("kpis", {})
         await asyncio.to_thread(create_campaign_result, {
+            "account_id": plan.get("_account_id"),
             "brand_id": plan.get("brand_id", "demo-edu-latam"),
             "campaign_id": campaign_result.get("campaign_id"),
             "status": campaign_result.get("status"),
+            "platform": campaign_result.get("platform"),
+            "is_mock": bool(campaign_result.get("is_mock", False)),
             "estimated_reach": campaign_result.get("estimated_reach"),
             "preview_url": campaign_result.get("preview_url"),
             "user_prompt": plan.get("user_prompt", ""),
@@ -433,6 +461,8 @@ async def approve_and_launch(plan: dict) -> dict:
             "paises": targeting.get("paises", []),
             "expected_leads": kpis.get("expected_leads"),
             "cpl_usd": kpis.get("cpl_usd"),
+            "cpl_min_usd": kpis.get("cpl_min_usd"),
+            "cpl_max_usd": kpis.get("cpl_max_usd"),
         })
     except Exception as _e:
         import logging
@@ -441,6 +471,8 @@ async def approve_and_launch(plan: dict) -> dict:
     return {
         "campaign_id": campaign_result.get("campaign_id"),
         "status": campaign_result.get("status"),
+        "platform": campaign_result.get("platform"),
+        "is_mock": bool(campaign_result.get("is_mock", False)),
         "estimated_reach": campaign_result.get("estimated_reach"),
         "preview_url": campaign_result.get("preview_url"),
         "report": report,

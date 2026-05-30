@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api';
+import { isLoggedIn, getAccount } from '@/lib/auth';
 import NoiseFilter from '@/components/ui/NoiseFilter';
 import LogoMark from '@/components/ui/LogoMark';
 import { Sparkles } from '@/components/ui/Icons';
@@ -8,8 +9,38 @@ import Sidebar from '@/components/dashboard/Sidebar';
 import CampaignList from '@/components/dashboard/CampaignList';
 import CampaignDetail from '@/components/dashboard/CampaignDetail';
 import StatsBar from '@/components/dashboard/StatsBar';
+import SettingsDrawer from '@/components/dashboard/SettingsDrawer';
+import UserMenu from '@/components/dashboard/UserMenu';
 
 type ViewKey = 'campañas' | 'guardadas' | 'activas' | 'borradores' | 'archivo';
+
+const PLATFORM_LABEL: Record<string, string> = {
+  meta: 'Meta Ads',
+  tiktok: 'TikTok Ads',
+  google_ads: 'Google Ads',
+};
+
+function formatRelativeTime(iso: string): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const diffMs = Date.now() - d.getTime();
+  const m = Math.round(diffMs / 60000);
+  if (m < 1) return 'ahora';
+  if (m < 60) return `hace ${m} min`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `hace ${h} h`;
+  const days = Math.round(h / 24);
+  if (days < 7) return `hace ${days} d`;
+  return d.toLocaleDateString('es', { day: 'numeric', month: 'short' });
+}
+
+function fmtCpl(min: number | null, max: number | null, fallback: number): string {
+  if (min != null && max != null && min > 0 && max > 0) {
+    return `$${Math.round(min)}–$${Math.round(max)} USD`;
+  }
+  if (fallback > 0) return `~$${Math.round(fallback)} USD`;
+  return '—';
+}
 
 function mapBackendCampaign(b: Record<string, unknown>): Campaign {
   const status: Campaign['status'] =
@@ -17,11 +48,15 @@ function mapBackendCampaign(b: Record<string, unknown>): Campaign {
   const budget_usd = Number(b.budget_usd ?? 0);
   const duration_days = Number(b.duration_days ?? 14);
   const created_at = String(b.created_at ?? '');
-  const relTime = created_at
-    ? new Date(created_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })
-    : 'Hoy';
+  const relTime = formatRelativeTime(created_at);
   const paises = (b.paises as string[] | null) ?? [];
   const leads = Number(b.expected_leads ?? 0);
+  const platformKey = String(b.platform ?? 'meta').toLowerCase();
+  const platformLabel = PLATFORM_LABEL[platformKey] ?? 'Meta Ads';
+  const cplMin = b.cpl_min_usd != null ? Number(b.cpl_min_usd) : null;
+  const cplMax = b.cpl_max_usd != null ? Number(b.cpl_max_usd) : null;
+  const cplMid = Number(b.cpl_usd ?? 0);
+  const isMock = Boolean(b.is_mock);
   return {
     id: String(b.id ?? Math.random()),
     name: String(b.copy_headline ?? 'Campaña Adkio'),
@@ -33,16 +68,16 @@ function mapBackendCampaign(b: Record<string, unknown>): Campaign {
     saved: false,
     archived: false,
     unread: true,
-    platform: 'Meta',
+    platform: platformLabel,
     liveSince: relTime,
     audience: { label: paises.join(', ') || 'LATAM', reach: String(b.estimated_reach ?? ''), cpm: '' },
     budget: { dia: budget_usd / duration_days, dias: duration_days, total: budget_usd },
     variants: [{ color: '#00d2ff', headline: String(b.copy_headline ?? ''), cta: String(b.copy_cta ?? 'Ver más') }],
-    rationale: String(b.copy_body ?? ''),
+    rationale: String(b.copy_body ?? '') + (isMock ? ' · ⚠️ Campaña simulada (sin credenciales conectadas)' : ''),
     metrics: leads > 0
       ? [
           { label: 'Leads estimados', value: `~${leads}`, good: true },
-          { label: 'CPL estimado', value: '$8–25 USD', good: true },
+          { label: 'CPL estimado', value: fmtCpl(cplMin, cplMax, cplMid), good: !isMock },
           { label: 'Inversión', value: `$${budget_usd.toFixed(0)}`, good: true },
         ]
       : undefined,
@@ -57,6 +92,23 @@ export default function DashboardPage() {
   const [savedMap, setSavedMap] = useState<Record<string, boolean>>({});
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Settings drawer (panel slide-over)
+  const [settingsOpen, setSettingsOpen] = useState<boolean>(
+    () => new URLSearchParams(window.location.search).get('panel') === 'settings'
+  );
+  // Auth state — re-render cuando cambie login/logout
+  const [logged, setLogged] = useState(isLoggedIn());
+  const account = getAccount();
+  // Plataformas conectadas — para el indicador del top bar
+  const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
+
+  // Re-abrir drawer si veníamos del OAuth callback
+  useEffect(() => {
+    if (sessionStorage.getItem('adkio.open_settings_after_oauth') === '1') {
+      sessionStorage.removeItem('adkio.open_settings_after_oauth');
+      setSettingsOpen(true);
+    }
+  }, []);
 
   useEffect(() => {
     apiFetch('/campaigns')
@@ -71,7 +123,20 @@ export default function DashboardPage() {
       })
       .catch(() => {})
       .finally(() => setIsLoading(false));
-  }, []);
+
+    // Plataformas conectadas — solo si hay JWT
+    if (logged) {
+      apiFetch('/connect/status')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data: unknown) => {
+          if (data && typeof data === 'object' && 'connections' in data) {
+            const conns = (data as { connections: Array<{ platform: string }> }).connections ?? [];
+            setConnectedPlatforms(conns.map((c) => c.platform));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [logged]);
 
   const counts = useMemo(() => ({
     total: campaigns.filter((c) => !c.archived).length,
@@ -145,7 +210,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Window chrome */}
-      <div className="relative z-10 h-9 flex-shrink-0 flex items-center px-4 border-b border-white/10 bg-black/40 backdrop-blur-md">
+      <div className="relative z-30 h-9 flex-shrink-0 flex items-center px-4 border-b border-white/10 bg-black/40 backdrop-blur-md">
         <div className="flex gap-2">
           <button onClick={() => goTo('/')} className="w-3 h-3 rounded-full transition-opacity hover:opacity-75" style={{ background: '#ff5f57' }} />
           <span className="w-3 h-3 rounded-full" style={{ background: '#febc2e' }} />
@@ -155,14 +220,39 @@ export default function DashboardPage() {
           <LogoMark className="w-3.5 h-3.5" />
           <span>Adkio — Workspace de campañas</span>
         </div>
-        <div className="ml-auto flex items-center gap-2 text-[10px] text-white/40">
-          <span className="inline-flex items-center gap-1">
-            <span className="relative flex w-1.5 h-1.5">
-              <span className="absolute inset-0 rounded-full animate-ping" style={{ background: '#10b981', opacity: 0.6 }} />
-              <span className="relative rounded-full w-1.5 h-1.5" style={{ background: '#10b981' }} />
-            </span>
-            <span>Sincronizado con Meta</span>
-          </span>
+        <div className="ml-auto flex items-center gap-3 text-[10px] text-white/40">
+          {logged && (
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="hidden md:inline-flex items-center gap-1.5 hover:text-white/70 transition-colors"
+              title="Gestionar conexiones"
+            >
+              {connectedPlatforms.length > 0 ? (
+                <>
+                  <span className="relative flex w-1.5 h-1.5">
+                    <span className="absolute inset-0 rounded-full animate-ping" style={{ background: '#10b981', opacity: 0.6 }} />
+                    <span className="relative rounded-full w-1.5 h-1.5" style={{ background: '#10b981' }} />
+                  </span>
+                  <span>
+                    {connectedPlatforms.length === 1
+                      ? `${PLATFORM_LABEL[connectedPlatforms[0]] ?? connectedPlatforms[0]} conectada`
+                      : `${connectedPlatforms.length} plataformas conectadas`}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                  <span>Sin plataformas · Conectar</span>
+                </>
+              )}
+            </button>
+          )}
+          <UserMenu
+            logged={logged}
+            account={account}
+            onLogout={() => setLogged(false)}
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
         </div>
       </div>
 
@@ -185,6 +275,7 @@ export default function DashboardPage() {
           onStatusClick={handleStatusClick}
           onClearStatus={() => setStatusFilter(null)}
           onNew={() => goTo('/app')}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
 
         <CampaignList
@@ -230,6 +321,8 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }

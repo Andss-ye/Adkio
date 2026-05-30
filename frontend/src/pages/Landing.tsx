@@ -2,6 +2,7 @@ import NoiseFilter from '../components/ui/NoiseFilter';
 import Navbar from '../components/landing/Navbar';
 import Hero from '../components/landing/Hero';
 import MenuBar from '../components/landing/MenuBar';
+import WhyAdkio from '../components/landing/WhyAdkio';
 import Inboxes from '../components/landing/Inboxes';
 import AgentSection from '../components/landing/AgentSection';
 import FeatureTriage from '../components/landing/FeatureTriage';
@@ -42,6 +43,7 @@ export default function Landing() {
         <Navbar />
         <Hero />
         <MenuBar />
+        <WhyAdkio />
         <Inboxes />
         <AgentSection />
         <FeatureTriage />

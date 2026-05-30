@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { isBackendAlive, simulateMockStream, simulateMockLaunch } from '@/lib/mock-campaign';
 import { apiFetch, BACKEND } from '@/lib/api';
 
@@ -50,9 +50,16 @@ export type StreamStatus =
 
 export type StreamMode = 'live' | 'mock';
 
+export type PlatformHint = 'auto' | 'meta' | 'tiktok' | 'google_ads';
+
+export type BackendHealth = 'checking' | 'online' | 'offline';
+
 export type LaunchKpis = {
   expected_leads: number;
   cpl_usd: number;
+  /** Rango dinámico estimado por backend (no constante global) */
+  cpl_min_usd?: number;
+  cpl_max_usd?: number;
   total_budget_usd: number;
   daily_budget_usd: number;
   duration_days: number;
@@ -66,6 +73,10 @@ export type LaunchResult = {
   report?: string;
   kpis?: LaunchKpis;
   next_steps?: string[];
+  /** True si la campaña no tocó la API real (sin credenciales conectadas) */
+  is_mock?: boolean;
+  /** Plataforma donde se creó la campaña */
+  platform?: 'meta' | 'tiktok' | 'google_ads';
 };
 
 function parseSseChunk(chunk: string): { event: string; data: unknown }[] {
@@ -97,7 +108,26 @@ export function useCampaignStream() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [launchResult, setLaunchResult] = useState<LaunchResult | null>(null);
   const [mode, setMode] = useState<StreamMode>('live');
+  const [backendHealth, setBackendHealth] = useState<BackendHealth>('checking');
   const lastPromptRef = useRef<string>('');
+
+  /* Health check al mount + cada 30s para que el usuario vea claramente si
+     el backend está vivo. Si está offline, automáticamente caemos a mock. */
+  useEffect(() => {
+    let cancelled = false;
+    async function check() {
+      const alive = await isBackendAlive(BACKEND);
+      if (cancelled) return;
+      setBackendHealth(alive ? 'online' : 'offline');
+      if (!alive) setMode('mock');
+    }
+    check();
+    const interval = setInterval(check, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const reset = useCallback(() => {
     setToolEvents([]);
@@ -139,11 +169,15 @@ export function useCampaignStream() {
   }, []);
 
   /* ─── Real streaming runner ────────────────────────────── */
-  const runLiveStream = useCallback(async (userPrompt: string, brandId: string) => {
+  const runLiveStream = useCallback(async (userPrompt: string, brandId: string, platformHint?: PlatformHint) => {
     const resp = await apiFetch('/campaign', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify({ user_prompt: userPrompt, brand_id: brandId }),
+      body: JSON.stringify({
+        user_prompt: userPrompt,
+        brand_id: brandId,
+        platform_hint: platformHint && platformHint !== 'auto' ? platformHint : null,
+      }),
     });
 
     if (!resp.ok || !resp.body) {
@@ -202,7 +236,7 @@ export function useCampaignStream() {
 
   /* ─── Public: startStream ──────────────────────────────── */
   const startStream = useCallback(
-    async (userPrompt: string, brandId = 'demo-edu-latam') => {
+    async (userPrompt: string, brandId = 'demo-edu-latam', platformHint: PlatformHint = 'auto') => {
       reset();
       lastPromptRef.current = userPrompt;
       setStatus('streaming');
@@ -222,7 +256,7 @@ export function useCampaignStream() {
 
       setMode('live');
       try {
-        await runLiveStream(userPrompt, brandId);
+        await runLiveStream(userPrompt, brandId, platformHint);
       } catch (err) {
         /* If the live call drops mid-way, only fall back if we haven't
            emitted any events yet — otherwise surface the error. */
@@ -292,6 +326,7 @@ export function useCampaignStream() {
     errorMsg,
     launchResult,
     mode,
+    backendHealth,
     startStream,
     approveCampaign,
     reset,

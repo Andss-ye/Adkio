@@ -25,7 +25,7 @@ load_dotenv()
 
 # ── Startup env validation ─────────────────────────────────────────────────
 # Fail fast if critical vars are missing — better than a cryptic 500 later.
-_REQUIRED_VARS = ["SUPABASE_URL", "GROQ_API_KEY"]
+_REQUIRED_VARS = ["SUPABASE_URL", "ANTHROPIC_API_KEY"]
 _missing = [v for v in _REQUIRED_VARS if not os.environ.get(v)]
 if _missing:
     print(f"[Adkio] FATAL: missing env vars: {', '.join(_missing)}", file=sys.stderr)
@@ -56,6 +56,9 @@ from backend.db.supabase_client import (
     list_campaigns,
     delete_campaign,
 )
+from backend.auth.router import router as auth_router
+from backend.api.connections import router as connections_router
+from backend.middleware.tenant import tenant_middleware
 
 # ── Rate limiter (in-memory, no Redis needed for demo) ─────────────────────
 limiter = Limiter(key_func=get_remote_address)
@@ -63,6 +66,12 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Adkio API", version="0.2.0")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.include_router(auth_router)
+app.include_router(connections_router)
+
+# Tenant middleware — debe quedar DESPUÉS de CORS y de security_headers para
+# que ambos se apliquen incluso a respuestas 401 del middleware.
+app.middleware("http")(tenant_middleware)
 
 # ── CORS ───────────────────────────────────────────────────────────────────
 _ALLOWED_ORIGINS = [
@@ -131,6 +140,8 @@ _MAX_MESSAGE_CHARS = 1000
 class CampaignRequest(BaseModel):
     user_prompt: str
     brand_id: str = "demo-edu-latam"
+    # Opcional — si el usuario elige plataforma desde la UI, el agente la respeta
+    platform_hint: Optional[str] = None
 
     @field_validator("user_prompt")
     @classmethod
@@ -150,6 +161,15 @@ class CampaignRequest(BaseModel):
         v = v.strip()
         if not re.match(r"^[a-zA-Z0-9_\-]{1,64}$", v):
             raise ValueError("brand_id inválido")
+        return v
+
+    @field_validator("platform_hint")
+    @classmethod
+    def validate_platform_hint(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        if v not in ("meta", "tiktok", "google_ads"):
+            raise ValueError("platform_hint debe ser meta, tiktok o google_ads")
         return v
 
 
@@ -228,7 +248,7 @@ async def create_campaign(
     _check_injection(body.user_prompt)
 
     async def generate():
-        async for chunk in run_campaign_agent(body.user_prompt, body.brand_id):
+        async for chunk in run_campaign_agent(body.user_prompt, body.brand_id, platform_hint=body.platform_hint):
             yield chunk
 
     return StreamingResponse(
@@ -252,7 +272,13 @@ async def approve_campaign(
     if not _campaign_agent_available:
         raise HTTPException(status_code=503, detail="Campaign agent no disponible")
 
-    result = await approve_and_launch(body.plan)
+    # Inyectamos account_id al plan para que approve_and_launch lo pase a
+    # create_campaign_result. Si no hay JWT (demo single-tenant), va None y la
+    # fila queda asociada solo al brand_id (no aparece para cuentas multitenant).
+    plan_with_account = dict(body.plan)
+    plan_with_account["_account_id"] = getattr(request.state, "account_id", None)
+
+    result = await approve_and_launch(plan_with_account)
 
     campaign_id = result.get("campaign_id", f"adkio_{int(datetime.now(timezone.utc).timestamp())}")
     _campaigns[campaign_id] = {
@@ -280,6 +306,12 @@ async def get_campaigns(
 ) -> list:
     if limit > 100:
         limit = 100
+    # Multitenant: si hay JWT, filtramos por account_id (ignoramos brand_id —
+    # cada usuario solo ve sus campañas).
+    # Single-tenant demo: sin JWT, filtramos por brand_id como antes.
+    account_id = getattr(request.state, "account_id", None)
+    if account_id:
+        return list_campaigns(account_id=account_id, limit=limit)
     return list_campaigns(brand_id=brand_id, limit=limit)
 
 
