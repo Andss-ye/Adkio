@@ -15,7 +15,7 @@ from litellm import completion
 
 logger = logging.getLogger(__name__)
 
-LLM_MODEL = os.environ.get("LLM_MODEL", "groq/llama-3.3-70b-versatile")
+LLM_MODEL = os.environ.get("LLM_MODEL", "anthropic/claude-sonnet-4-5")
 
 # Hard caps — never let a single call drain quota uncapped
 MAX_TOKENS_CAMPAIGN = int(os.environ.get("MAX_TOKENS_CAMPAIGN", "2000"))
