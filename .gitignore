@@ -43,3 +43,6 @@ skills-lock.json
 
 # TS incremental build info (artefacto)
 *.tsbuildinfo
+
+# Cursor
+.cursor/
