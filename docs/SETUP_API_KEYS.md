@@ -136,7 +136,7 @@ El adapter va automáticamente a `sandbox-ads.tiktok.com` (ver
   Exigen privacy policy + screenshots + descripción de uso.
 - Cambiás `TIKTOK_USE_SANDBOX=false` → adapter va a `business-api.tiktok.com`.
 - El access token de prod **dura 24h**; refresh token dura ~365 días → necesitás
-  cron de renovación (documentado en `docs/HANDOFF_MULTITENANT.md` para Freddy).
+  un cron de renovación (todavía no implementado — ver `docs/STATUS.md`).
 
 ---
 

@@ -6,9 +6,9 @@ Diseño:
 - Recibe `MetaCreds` por parámetro: cero lectura de env desde acá.
 - Inicializa el SDK por request con `FacebookAdsApi.init(...)`. La inicialización
   es global del SDK (limitación de la lib), así que el adapter NO es thread-safe
-  para múltiples accounts simultáneos. Para multitenant alta concurrencia,
-  Freddy va a necesitar un pool de FacebookAdsApi sessions — ver
-  `docs/HANDOFF_MULTITENANT.md`.
+  para múltiples accounts simultáneos. Para multitenant con alta concurrencia hace
+  falta un pool de sesiones FacebookAdsApi (o HTTP directo) — ver la deuda técnica
+  registrada en `docs/STATUS.md`.
 - Todos los recursos se crean con `status=PAUSED` (HITL).
 - `create_campaign` hace la cadena completa Campaign → AdSet → Ad y devuelve
   el campaign_id como handle principal (con adset_id y ad_id en `raw`).

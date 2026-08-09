@@ -1,386 +1,179 @@
-# Adkio — Master Context
+# CLAUDE.md
 
-> **Lee esto completo antes de escribir código.** Única fuente de verdad del proyecto.
-> Si cambiás un schema, una decisión técnica, o una integración → actualizá este archivo en el mismo PR.
->
-> Última actualización: 10 May 2026, 01:00 — stack definitivo confirmado.
-
----
-
-## Estado del proyecto
-
-- Pitch del sábado entregado. Idea recibió feedback muy positivo de mentores.
-- Mentora de 30X interesada — si hay MVP funcional mañana en la tarde, agenda reunión con Andrés Bilbao (co-founder de Rappi y 30X).
-- Deadline real: mañana 12 AM (entrega final hackathon). Deadline interno: tarde de mañana (mentoría 1-a-1 por videollamada).
-- Equipo: 4 personas, todos con Claude Code, todos trabajan en backend + tools según objetivos asignados.
-
----
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Qué es Adkio
 
-Agente de IA que ejecuta campañas en Meta Ads desde lenguaje natural. El usuario escribe lo que quiere, Adkio conoce su marca, configura todo correctamente (audiencia, copy, presupuesto, validación de fase de aprendizaje de Meta), y lanza con aprobación humana.
+Agente de IA que planifica y lanza campañas en Meta, TikTok y Google Ads desde lenguaje natural,
+con aprobación humana obligatoria antes de publicar. Prototipo avanzado / beta cerrada.
 
-**No es un generador de copy.** Codifica conocimiento experto de Meta Ads y lo ejecuta autónomamente.
+| Documento | Cuándo leerlo |
+|---|---|
+| `README.md` | Referencia práctica: quickstart, API completa, modelo de datos, env vars, deploy |
+| `docs/CODESTYLE.md` | **Antes de escribir código.** Bases no negociables y dónde hay libertad |
+| `docs/STATUS.md` | Qué funciona hoy, qué está bloqueado por terceros, deuda técnica, roadmap |
+| `docs/SETUP_API_KEYS.md` | Credenciales de test de Meta / TikTok / Google |
+| `docs/adr/` | Decisiones de arquitectura (deploy en Railway, runbook de DNS a Supabase) |
 
-**Vertical inicial:** educación ejecutiva en LATAM. Alto CPL, ROI claro de automatización, mentora de 30X involucrada.
+Si cambiás un contrato — firma de tool, tabla, evento SSE, env var — actualizá `README.md` y
+`.env.example` en el mismo PR.
 
-**Human-in-the-loop (HITL):** modo default. Adkio prepara el plan completo, el usuario aprueba con un click, entonces lanza. Esto es un feature, no una limitación — se vende como "transparencia y control."
-
----
-
-## Modelo de negocio
-
-SaaS en la nube. El cliente ya gasta en ads — Adkio es eficiencia sobre lo que ya pagan.
-
-| Plan | Precio | Incluye |
-|---|---|---|
-| Starter | $99/mes | Hasta $2K USD/mes en ad spend, 1 marca |
-| Growth | $249/mes | Hasta $10K USD/mes, 3 marcas |
-| Scale | $599/mes + 1% ad spend | Ilimitado, multi-usuario |
-
----
-
-## Stack técnico — DEFINITIVO
-
-| Capa | Tech | Decisión |
-|---|---|---|
-| LLM | Groq (Llama 3.3 70B) — gratis ahora | Cambia a Anthropic Claude con 1 línea cuando lleguen créditos |
-| Wrapper LLM | `litellm` | Abstrae Groq / Gemini / Anthropic — misma API para todos |
-| Backend | Python 3.11 + FastAPI | Async, rápido, tool use via litellm |
-| Frontend | Vite + React 18 + TypeScript + Tailwind | Sin Next.js — SPA puro, más rápido de desarrollar |
-| Componentes UI | Tailwind custom + shadcn solo donde duele (Dialog, Toast) | NO shadcn default — look propio |
-| DB | Supabase (Postgres) | 5 min setup, free tier suficiente para demo |
-| Meta Ads | Sandbox/mock (verificación oficial en proceso) | Meta API real esperando aprobación esta semana |
-| Deploy | Vercel (front) + Railway (back) | Deploy en 1 click, URLs públicas |
-
-**NO usar:** Next.js, LangChain, MCP servers (van en roadmap), Docker para el demo, Streamlit.
-
----
-
-## Cómo cambiar de modelo LLM
-
-Toda la lógica de LLM pasa por `litellm`. Para cambiar de modelo, solo cambiás la variable de entorno `LLM_MODEL`. Sin tocar código.
-
-```python
-# backend/llm.py — único lugar donde se configura el LLM
-from litellm import completion
-import os
-
-LLM_MODEL = os.environ.get("LLM_MODEL", "groq/llama-3.3-70b-versatile")
-
-def call_llm(messages, tools=None, stream=False):
-    kwargs = {
-        "model": LLM_MODEL,
-        "messages": messages,
-        "stream": stream,
-    }
-    if tools:
-        kwargs["tools"] = tools
-        kwargs["tool_choice"] = "auto"
-    return completion(**kwargs)
-```
-
-Modelos disponibles (sin cambiar código, solo env var):
-
-| Proveedor | `LLM_MODEL` | Estado |
-|---|---|---|
-| Groq | `groq/llama-3.3-70b-versatile` | Default — gratis |
-| Groq alternativa | `groq/llama-3.1-70b-specdec` | Más rápido, menos capaz |
-| Gemini | `gemini/gemini-2.0-flash` | Gratuito, buena alternativa |
-| Anthropic | `anthropic/claude-sonnet-4-5` | Mejor tool use — activar cuando lleguen créditos |
-
-**Nota importante sobre tool use en Groq:** `llama-3.3-70b-versatile` tiene buen soporte de function calling pero puede ser menos predecible que Claude. El Objetivo A debe testearlo temprano y ajustar los system prompts si hace falta.
-
----
-
-## Arquitectura del sistema
-
-```
-┌────────────────────────────────────────────────────────┐
-│               FRONTEND (Vite + React)                  │
-│  Chat conversacional + Panel de razonamiento + Preview │
-└──────────────────────┬─────────────────────────────────┘
-                       │ POST /campaign  (SSE streaming)
-                       ▼
-┌────────────────────────────────────────────────────────┐
-│              BACKEND (FastAPI + Python)                │
-│                                                        │
-│  ┌──────────────────┐    ┌────────────────────────┐    │
-│  │ Onboarding Agent │    │    Campaign Agent      │    │
-│  │  (genera config) │───▶│  (litellm + tool use)  │    │
-│  └──────────────────┘    └────────────┬───────────┘    │
-│                                       │                │
-│       ┌───────────────────────────────┼──────────┐     │
-│       ▼               ▼              ▼           ▼     │
-│  budget_validator  audience_   copy_       campaign_   │
-│                    analyzer    generator   validator   │
-│                                            campaign_   │
-│                                            launcher    │
-│                                            report_     │
-│                                            generator   │
-└────────────────────────────────────────────────────────┘
-                       │
-                       ▼
-          ┌────────────────────────┐
-          │   Meta Ads API         │
-          │   (sandbox / mock)     │
-          └────────────────────────┘
-```
-
-`brand_config` persiste en Supabase. Una fila por marca.
-
----
-
-## Schemas — NO cambiar sin avisar al equipo
-
-### `brand_config` (tabla Supabase)
-
-```python
-{
-  "id": "uuid",
-  "negocio_nombre": "str",
-  "negocio_industria": "str",
-  "propuesta_de_valor": "str",
-  "publico_roles": ["str"],
-  "publico_paises": ["str"],
-  "publico_edad_min": "int",
-  "publico_edad_max": "int",
-  "publico_intereses": ["str"],
-  "presupuesto_min_campana_usd": "float",
-  "presupuesto_max_campana_usd": "float",
-  "tono_estilo": ["str"],
-  "tono_evitar": ["str"],
-  "ejemplos_copy_aprobado": ["str"],
-  "pixel_configurado": "bool",
-  "created_at": "timestamp"
-}
-```
-
-### Tool I/O contracts
-
-```python
-copy_generator(
-  producto: str,
-  audiencia: dict,
-  canal: str,             # "instagram" | "facebook"
-  tono: dict,
-  nivel_consciencia: str  # "problem_aware" | "solution_aware" | "product_aware"
-) -> {
-  "headline": str,
-  "body": str,
-  "cta": str,
-  "rationale": str        # explicacion — se muestra en el panel de razonamiento del frontend
-}
-
-audience_analyzer(
-  objetivo: str,
-  brand_config: dict
-) -> {
-  "intereses": list[str],
-  "edad_min": int,
-  "edad_max": int,
-  "paises": list[str],
-  "tamano_estimado": int,
-  "exclusiones": list[str],
-  "rationale": str
-}
-
-campaign_validator(
-  campaign_params: dict
-) -> {
-  "passed": bool,
-  "warnings": list[str],
-  "blockers": list[str],
-  "checklist_results": dict,
-  "rationale": str
-}
-
-budget_validator(
-  monto_usd: float,
-  brand_config: dict,
-  duracion_dias: int
-) -> {
-  "aprobado": bool,
-  "warnings": list[str],
-  "presupuesto_diario_calculado": float,
-  "rationale": str
-}
-
-campaign_launcher(
-  canal: str,
-  copy: dict,
-  targeting: dict,
-  budget: float,
-  duracion_dias: int
-) -> {
-  "campaign_id": str,
-  "status": str,
-  "estimated_reach": str,
-  "preview_url": str | None
-}
-
-report_generator(
-  campaign_result: dict,
-  all_tool_outputs: dict
-) -> str  # markdown con el reporte final
-```
-
-**Todos los tools deben incluir `rationale`** — es el texto que el frontend muestra en el panel de razonamiento mientras el agente trabaja. Es el momento WOW de la demo.
-
----
-
-## Demo flow (mañana — este es el guion)
-
-1. Brand config ya cargado en Supabase (`demo-edu-latam` — AcademiaEjecutiva LATAM)
-2. Usuario escribe en el chat: *"Quiero llenar nuestro evento en Bogotá, 15 de junio, $200, somos exclusivos"*
-3. El panel de razonamiento muestra en streaming los tool calls uno por uno con sus rationales
-4. Preview de campaña aparece a la derecha: copy generado, audiencia configurada, CPL estimado, advertencias
-5. Botón grande "Aprobar y lanzar"
-6. Click → mock de Meta devuelve campaign_id real con formato correcto → reporte final
-
-**El momento WOW es el paso 3.** No puede ser un loading genérico — tienen que verse los pasos del agente pensando.
-
-### Qué decir sobre Meta en el pitch
-
-> *"El flujo end-to-end con Meta Marketing API está implementado. La verificación oficial de nuestra app está en proceso — Meta toma 2 a 5 días hábiles. Lo que ven es nuestro sandbox con el mismo schema de la API real."*
-
-Esto es honesto, profesional, y no genera preguntas.
-
----
-
-## Sistema de diseño del frontend
-
-Claude Code del Objetivo D usa esto como referencia:
-
-```
-Background principal:  #0A0E14
-Surface / cards:       #131820
-Accent:                #00D4A8  (verde mate — NO neon, NO purple)
-Texto principal:       #E8ECF1
-Texto muted:           #6B7280
-Border:                rgba(255, 255, 255, 0.07)
-Font body:             Inter (Google Fonts)
-Font mono:             JetBrains Mono (para tool names, IDs, campaign_id)
-Border radius base:    8px
-Border radius cards:   12px
-Spacing:               múltiplos de 4px
-
-Prohibido: gradientes purple, azul Vercel, shadcn out-of-the-box,
-           cualquier cosa que se vea como "AI hackathon genérico"
-Inspiración: Linear, Raycast, Anthropic Console
-```
-
----
-
-## Estructura del repo
-
-```
-adkio/
-├── CONTEXT.md               ← este archivo — leer siempre primero
-├── OBJECTIVES.md            ← objetivos vivos — actualizar con status
-├── .env.example
-├── backend/
-│   ├── main.py              ← FastAPI entry + endpoints
-│   ├── llm.py               ← wrapper litellm — ÚNICO punto de config del LLM
-│   ├── agents/
-│   │   ├── campaign_agent.py
-│   │   └── onboarding_agent.py
-│   ├── tools/
-│   │   ├── copy_generator.py
-│   │   ├── audience_analyzer.py
-│   │   ├── campaign_validator.py
-│   │   ├── budget_validator.py
-│   │   ├── campaign_launcher.py
-│   │   └── report_generator.py
-│   ├── integrations/
-│   │   └── meta_ads.py
-│   ├── db/
-│   │   └── supabase_client.py
-│   └── requirements.txt
-└── frontend/
-    ├── index.html
-    ├── vite.config.ts
-    ├── tailwind.config.ts
-    ├── src/
-    │   ├── main.tsx
-    │   ├── App.tsx
-    │   └── components/
-    │       ├── Chat.tsx
-    │       ├── ReasoningPanel.tsx
-    │       └── CampaignPreview.tsx
-    └── package.json
-```
-
----
-
-## Variables de entorno
+## Comandos
 
 ```bash
-# .env.example — copiar a .env y completar
+# Backend — SIEMPRE desde la raíz del repo: los imports son absolutos (backend.*)
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -r backend/requirements.txt
+uvicorn backend.main:app --reload --port 8000     # API en :8000, OpenAPI en /docs
+python backend/db/seed.py                          # carga la marca demo-edu-latam
 
-# LLM — cambiar solo esta línea para cambiar de modelo
-LLM_MODEL=groq/llama-3.3-70b-versatile
-
-# Groq (default, gratis)
-GROQ_API_KEY=
-
-# Gemini (alternativa gratuita)
-GEMINI_API_KEY=
-
-# Anthropic (cuando lleguen créditos)
-ANTHROPIC_API_KEY=
-
-# Supabase
-SUPABASE_URL=
-SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-
-# Meta Ads
-META_APP_ID=
-META_APP_SECRET=
-META_ACCESS_TOKEN=
-META_AD_ACCOUNT_ID=
-META_USE_SANDBOX=true
+# Tests — pytest con asyncio_mode=auto: las corrutinas no llevan decorador.
+# Requiere backend/requirements.txt instalado (tests/test_endpoints.py importa backend.main).
+pip install pytest pytest-asyncio
+pytest                                             # ~120 tests, sin red ni credenciales
+pytest tests/test_tools.py                         # un archivo
+pytest tests/test_tools.py::TestBudgetValidator::test_aprobado_con_presupuesto_normal  # un test
+pytest -k "resolver" -v                            # por patrón
 
 # Frontend
-VITE_BACKEND_URL=http://localhost:8000
+cd frontend && npm install
+npm run dev                                        # :5173
+npm run build                                      # tsc -b + vite build — el gate de tipos
 ```
 
----
+No hay linter ni formateador en CI. El único gate automático es que `tsc -b` pase en el frontend.
+`scripts/*.py` son smoke tests **manuales** contra APIs reales; pytest no los corre y `backend/` no
+debe importarlos.
 
-## Workflow de coordinación entre Claudes
+## Arquitectura
 
-- Repo en GitHub, `main` protegida.
-- Cada Claude Code trabaja en su rama: `obj-a/...`, `obj-b/...`, `obj-c/...`, `obj-d/...`
-- Commits con formato: `[obj-X] descripción`
-- PRs con descripción clara de qué hace, qué archivos toca, qué dependencias agregó
-- Si cambiás un schema → actualizá CONTEXT.md en el mismo PR
-- Mock-first: si dependés de otro objetivo que no está listo, escribí un mock que respete el schema exacto
+### El flujo central: HITL en dos endpoints
 
----
-
-## Lo que NO se hace mañana
-
-Multi-tenant con auth, TikTok Ads, Stripe, tests automatizados, onboarding visual elaborado, MCPs. Todo es roadmap.
-
----
-
-## Roadmap para el pitch
-
-- Sprint 2: TikTok Ads, LinkedIn Ads, Meta verificación completa
-- Sprint 3: MCP integrations (HubSpot, Salesforce, Slack)
-- Sprint 4: Modo autopiloto, reglas de optimización automática
-- Sprint 5: Multi-vertical (e-commerce, SaaS B2B)
-
----
-
-## Log de cambios
+El human-in-the-loop es estructural, no una opción de configuración:
 
 ```
-10 May 01:00 — v3.0 — stack definitivo
-  • LLM: Groq (Llama 3.3 70B) via litellm — gratis ahora, Anthropic con 1 línea cuando lleguen créditos
-  • Frontend: Vite + React (NO Next.js) — SPA puro
-  • Meta: sandbox/mock confirmado, verificación oficial iniciada
-  • Sistema de diseño definido para frontend
-  • HITL confirmado como feature default
+POST /campaign  (SSE)   budget_validator → audience_analyzer → platform_recommender
+                        → copy_generator → campaign_validator ──▶ event: plan_ready → FIN
+POST /campaign/approve   campaign_launcher → report_generator   (crea en PAUSED)
 ```
+
+El generador SSE **termina** en `plan_ready`; las tools de lanzamiento no se le exponen al LLM
+durante la planificación. Eventos: `tool_start`, `tool_result`, `plan_ready`, `error`.
+
+### Las tres capas del backend
+
+1. **Tools** (`backend/tools/`) — funciones módulo-level con el nombre del archivo, I/O en `dict`
+   porque el LLM las serializa a JSON.
+2. **Resolver de credenciales** (`backend/services/credential_resolver.py`) — el **único** lugar del
+   sistema que sabe de dónde salen las credenciales. `EnvCredentialResolver` lee `.env`;
+   `DBCredentialResolver(account_id)` lee `platform_connections` y descifra con Fernet. Se inyecta
+   por request con un `ContextVar` desde `middleware/tenant.py`.
+3. **Adapters** (`backend/integrations/`) — `PlatformAdapter` es un `Protocol` runtime-checkable;
+   `adapter_registry.py` es el único punto de despacho. Reciben credenciales por parámetro.
+
+**Invariante: tools y adapters nunca leen env ni DB.** Es lo que mantiene el core stateless y
+tenant-agnostic. Romperlo rompe el multitenant sin que ningún test falle.
+
+### Contratos de las tools
+
+```python
+budget_validator(monto_usd: float, brand_config: dict, duracion_dias: int) -> dict
+audience_analyzer(objetivo: str, brand_config: dict) -> dict
+platform_recommender(objetivo: str, audiencia: dict, brand_config: dict,
+                     presupuesto_usd: float = 0.0) -> dict
+copy_generator(producto: str, audiencia: dict, canal: str, tono: dict,
+               nivel_consciencia: str) -> dict
+campaign_validator(campaign_params: dict) -> dict
+campaign_launcher(canal: str, copy: dict, targeting: dict, budget: float,
+                  duracion_dias: int, platform: str | None = None) -> dict
+campaign_remover(platform: str, campaign_id: str, confirm: bool = False) -> dict
+report_generator(campaign_result: dict, all_tool_outputs: dict) -> str  # markdown
+```
+
+El schema que ve el LLM (`_TOOL_DEFINITIONS` en `agents/campaign_agent.py`) expone **menos**
+parámetros que la firma de Python: el agente inyecta el resto (`brand_config`, `audiencia`,
+`presupuesto_usd`). Si agregás un parámetro, decidí explícitamente de qué lado va.
+
+Tres reglas al escribir o modificar una tool:
+
+- **Devolvé `rationale`** (1-3 oraciones en español). Es lo que el panel de razonamiento muestra en
+  vivo. Sin `rationale` la UI queda vacía.
+- **Nunca rompas el stream.** Si el LLM devuelve basura o el proveedor falla, caé a un default
+  razonable y explicá la degradación en el `rationale`. El agente tiene que llegar a `plan_ready`.
+- **Parseo defensivo del JSON del LLM** (regex + `json.loads` en `try/except`): asumí que va a venir
+  envuelto en texto o en un bloque ` ```json `.
+
+### Tenancy
+
+`ADKIO_REQUIRE_AUTH` decide el comportamiento del middleware:
+
+- `false` (**default**) — permisivo: sin JWT la request pasa con `account_id = None` y se cae a las
+  credenciales del `.env`. Es el modo del demo single-tenant.
+- `true` — estricto: toda ruta no pública exige JWT válido; credenciales desde
+  `platform_connections`.
+
+Auth propia (tabla `accounts` + bcrypt + JWT HS256), **no Supabase Auth**. El aislamiento real de
+tenancy está en el `WHERE` del resolver, no en RLS: el backend usa la service role key y bypassa RLS.
+
+### LLM
+
+`backend/llm.py` es el **único** punto de configuración. Cambiar de modelo = cambiar `LLM_MODEL`,
+sin tocar código. Caps de tokens duros por llamada. No agregues llamadas al proveedor por fuera de
+`call_llm`.
+
+### Frontend
+
+SPA sin router: `App.tsx` hace un `switch` sobre `window.location.pathname`. Todas las llamadas a la
+API pasan por `lib/api.ts` (`apiFetch` / `apiUrl`), que agrega `X-API-Key` y el `Bearer` de
+`localStorage` — nunca uses `fetch` directo a la API. El SSE se consume en
+`hooks/useCampaignStream.ts`. Componentes agrupados por superficie (`landing/`, `dashboard/`,
+`app/`, `shell/`, `settings/`, `ui/`).
+
+## Gotchas que cuestan tiempo
+
+- **La tabla `campaigns` no está en `schema.sql`** — se creó a mano en Supabase; solo sus columnas
+  posteriores viven en migraciones. Una DB nueva requiere crearla manualmente. Las claves que no
+  estén en `_CAMPAIGN_FIELDS` (`db/supabase_client.py`) se descartan **en silencio** al insertar.
+- **Migraciones**: aplicar `backend/db/migrations/*.sql` en orden numérico, siempre idempotentes.
+  `schema.sql` es el estado consolidado; si agregás una migración, reflejala ahí.
+- **Estado en memoria del proceso**: `_campaigns` y `_conversations` en `main.py` más los contadores
+  del rate limiter. Se pierden en cada reinicio y no funcionan con >1 réplica.
+- **`brand_id` del body se ignora** si la request está autenticada y la cuenta tiene marca propia
+  (`_resolve_brand_id`).
+- **`platform_hint` hace override determinístico** de `platform_recommender` dentro de
+  `run_campaign_agent`. Si extendés el agente, preservá ese hook.
+- **El SDK de Meta no es thread-safe** — `FacebookAdsApi.init()` es global. Con concurrencia real
+  hay que serializar con un lock o pasar a HTTP directo.
+- **TikTok no permite hard-delete**: solo soft-disable. `DeleteResult.soft_delete=True` y la UI debe
+  decir "Eliminar (desactiva en TikTok)".
+- **El `developer_token` de Google Ads es de Adkio** (`ADKIO_GOOGLE_ADS_DEVELOPER_TOKEN`), no del
+  usuario; el usuario aporta refresh token + customer_id.
+- **Sin credenciales conectadas, `campaign_launcher` cae a mock** y marca la fila con
+  `is_mock=true`. La UI tiene que seguir siendo honesta al respecto.
+- **`/health` reporta el modelo default de Groq** mientras `llm.py` cae a Anthropic. El valor real
+  es el de `llm.py`.
+- Los endpoints que gastan tokens del LLM exigen `X-API-Key`; si `ADKIO_API_KEY` está vacía quedan
+  abiertos y se loguea un warning. El frontend necesita el mismo valor en `VITE_API_KEY`.
+
+## Convenciones mínimas
+
+Detalle y razones en `docs/CODESTYLE.md`. Lo indispensable:
+
+- **Idioma**: identificadores en inglés; campos de dominio que ya existen en DB y tools en español
+  (`negocio_nombre`, `monto_usd`, `rationale`); docstrings, comentarios, errores al usuario y
+  commits en español; logs en inglés con `%s` por parámetro.
+- **Python 3.11**, imports absolutos `backend.*`, `Optional[X]`, dataclasses `frozen=True` para
+  contratos, `Protocol` para interfaces, Pydantic v2 validando en el borde con mensajes accionables.
+- **React**: `export default function`, props con `type Props = {...}`, alias `@/`, Tailwind para
+  layout y estilos inline para colores derivados en runtime.
+- **Commits**: conventional commits con scope y descripción en español
+  (`feat(dashboard): rediseño con hero y tabla responsive`). Ramas `feat/`, `fix/`, `docs/`,
+  `chore/`; PR a `main`.
+- **Tests sin red ni credenciales**: adapters con dobles, resolver con un `dict` de entorno
+  inyectado (`EnvCredentialResolver(environ={...})`), nunca parcheando `os.environ` global.
+
+## Restricciones de producto
+
+Toda campaña se crea en **PAUSED** — es el guardrail de gasto y no se negocia. La app no debe
+presentar como real algo que fue mock. No agregues librerías de routing ni de UI al frontend sin
+discutirlo: el stack es deliberadamente chico.

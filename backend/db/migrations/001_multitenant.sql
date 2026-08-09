@@ -1,5 +1,5 @@
 -- ────────────────────────────────────────────────────────────────────────────
--- Adkio · Migración multi-tenant (T1 + T2 del HANDOFF_MULTITENANT.md)
+-- Adkio · Migración multi-tenant: accounts + platform_connections + RLS
 -- Pegar en: https://supabase.com/dashboard/project/aphrujuaklsytbnhcthm/sql/new
 -- Después correr "Run" (Ctrl+Enter)
 -- ────────────────────────────────────────────────────────────────────────────

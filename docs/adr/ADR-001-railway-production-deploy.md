@@ -6,7 +6,12 @@
 | **Fecha** | 2026-07-21 |
 | **Última actualización** | 2026-07-22 |
 | **Decisores** | Equipo Adkio |
-| **Relacionados** | `.archive/docs/DEPLOY_VIABILITY.md`, `.archive/docs/RAILWAY_SIGNUP_DNS_FAILURE.md` |
+| **Relacionados** | `README.md` (secciones Deploy y Variables de entorno), `.env.production.example` |
+
+> Los documentos de trabajo que originaron este ADR (la evaluación de proveedores
+> `DEPLOY_VIABILITY.md` y el diagnóstico `RAILWAY_SIGNUP_DNS_FAILURE.md`) se
+> depuraron del repo; lo esencial de ambos quedó inlineado acá. Si hacen falta los
+> originales, están en el historial de git (`git log --diff-filter=D -- '*.md'`).
 
 ---
 
@@ -14,7 +19,7 @@
 
 Adkio es un SPA (Vite + React) + API FastAPI con SSE largo (`POST /campaign`, 20–90s), Postgres en Supabase, y auth multitenant propia (`/auth/signup`, `/auth/login`) que habla con PostgREST vía `SUPABASE_URL` + service role.
 
-La evaluación en `DEPLOY_VIABILITY.md` recomendaba **Vercel (front) + Railway (back) + Supabase**. Para el deploy real del pitch se eligió un camino más corto: **ambos servicios en un solo proyecto Railway**, con Dockerfiles del repo y variables de entorno inyectadas por Railway (sin `.env` en la imagen).
+La evaluación de proveedores (techo de presupuesto ≤ $150 USD/mes incluyendo el uso del LLM; el SSE largo descarta serverless con timeout corto; el costo dominante es el LLM con tool use, no el cómputo del PaaS) recomendaba **Vercel (front) + Railway (back) + Supabase**. Para el deploy real del pitch se eligió un camino más corto: **ambos servicios en un solo proyecto Railway**, con Dockerfiles del repo y variables de entorno inyectadas por Railway (sin `.env` en la imagen).
 
 Al poner la app en línea aparecieron dos clases de fallos:
 
@@ -136,5 +141,5 @@ IDs Railway de referencia:
 - Código: `backend/auth/router.py`, `backend/db/accounts.py`, `backend/db/supabase_client.py`, `frontend/src/lib/auth.ts`
 - Docker: `backend/Dockerfile`, `frontend/Dockerfile`
 - Env de producción (plantilla): `.env.production.example`
-- Diagnóstico DNS: `.archive/docs/RAILWAY_SIGNUP_DNS_FAILURE.md`
-- Evaluación de combos: `.archive/docs/DEPLOY_VIABILITY.md`
+- Referencia técnica del proyecto: `README.md`
+- Estado del producto y deuda técnica: `docs/STATUS.md`
