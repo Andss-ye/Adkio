@@ -9,6 +9,7 @@ POST /campaign/approve triggers: campaign_launcher → report_generator
 import asyncio
 import json
 import os
+import re
 from typing import AsyncGenerator
 
 from backend.llm import call_llm
@@ -177,6 +178,91 @@ Reglas:
 """
 
 
+def _extract_user_parameters(user_prompt: str) -> dict:
+    """Extrae país(es) y rango de edad explícitos del prompt del usuario.
+
+    Soporta todos los países hispanohablantes de Latinoamérica y Europa (España).
+
+    Ejemplos:
+        >>> _extract_user_parameters("campaña en Colombia, 23-30 años")
+        {'paises': ['Colombia'], 'edad_min': 23, 'edad_max': 30}
+
+        >>> _extract_user_parameters("España y Argentina, edad 25-40")
+        {'paises': ['España', 'Argentina'], 'edad_min': 25, 'edad_max': 40}
+
+        >>> _extract_user_parameters("sin país ni edad")
+        {'paises': None, 'edad_min': None, 'edad_max': None}
+
+    Args:
+        user_prompt: El prompt del usuario con posibles especificaciones de país y edad.
+
+    Returns:
+        Dict con claves 'paises' (list|None), 'edad_min' (int|None), 'edad_max' (int|None).
+        Valores None indican que no se detectaron parámetros explícitos.
+    """
+    # Diccionario de países hispanohablantes: nombre -> código ISO
+    SPANISH_SPEAKING_COUNTRIES = {
+        "Colombia": "CO",
+        "Mexico": "MX",
+        "México": "MX",
+        "Argentina": "AR",
+        "Chile": "CL",
+        "Peru": "PE",
+        "Perú": "PE",
+        "Venezuela": "VE",
+        "Ecuador": "EC",
+        "Guatemala": "GT",
+        "Bolivia": "BO",
+        "Paraguay": "PY",
+        "Uruguay": "UY",
+        "Costa Rica": "CR",
+        "Panama": "PA",
+        "Panamá": "PA",
+        "Nicaragua": "NI",
+        "Honduras": "HN",
+        "El Salvador": "SV",
+        "Republica Dominicana": "DO",
+        "República Dominicana": "DO",
+        "Cuba": "CU",
+        "Espana": "ES",
+        "España": "ES",
+    }
+
+    # Regex para rango de edad: "23-30", "edad 23-30", "años 25-35"
+    # Captura hasta 3 dígitos para manejar casos como 100
+    age_match = re.search(
+        r'(?:edad|años?|age)?\s*(\d{1,3})\s*[-–]\s*(\d{1,3})',
+        user_prompt,
+        re.IGNORECASE
+    )
+
+    # Extrae países mencionados (case-insensitive)
+    # Track by ISO code to avoid duplicates, prefer forms with accents
+    detected_codes = {}
+    for pais_name in SPANISH_SPEAKING_COUNTRIES.keys():
+        if re.search(rf'\b{re.escape(pais_name)}\b', user_prompt, re.IGNORECASE):
+            code = SPANISH_SPEAKING_COUNTRIES[pais_name]
+            # Prefer names with accents (more complete names)
+            if code not in detected_codes or "á" in pais_name or "é" in pais_name or "í" in pais_name or "ó" in pais_name or "ú" in pais_name:
+                detected_codes[code] = pais_name
+
+    paises = list(detected_codes.values())
+
+    # Clamp edad a rango válido 13-65
+    edad_min, edad_max = None, None
+    if age_match:
+        edad_min = max(13, min(65, int(age_match.group(1))))
+        edad_max = max(13, min(65, int(age_match.group(2))))
+        if edad_min >= edad_max:
+            edad_min, edad_max = None, None
+
+    return {
+        "paises": paises if paises else None,
+        "edad_min": edad_min,
+        "edad_max": edad_max,
+    }
+
+
 async def _get_brand_config(brand_id: str) -> dict:
     from backend.db.supabase_client import get_brand_config
     config = await asyncio.to_thread(get_brand_config, brand_id)
@@ -190,6 +276,7 @@ def _dispatch_tool(
     tool_args: dict,
     brand_config: dict,
     tool_outputs: dict,
+    extracted_params: dict | None = None,
 ) -> dict:
     if tool_name == "budget_validator":
         result = budget_validator(
@@ -201,9 +288,13 @@ def _dispatch_tool(
         return result
 
     if tool_name == "audience_analyzer":
+        extracted = extracted_params or {}
         result = audience_analyzer(
             objetivo=tool_args["objetivo"],
             brand_config=brand_config,
+            paises_explícitos=extracted.get("paises"),
+            edad_min_explícita=extracted.get("edad_min"),
+            edad_max_explícita=extracted.get("edad_max"),
         )
         tool_outputs["audience_analyzer"] = result
         return result
@@ -290,6 +381,10 @@ async def run_campaign_agent(
         return
     tool_outputs: dict = {}
 
+    # Extract explicit user parameters (country/countries and age range)
+    extracted_params = _extract_user_parameters(user_prompt)
+    tool_outputs["_extracted_params"] = extracted_params
+
     hint_line = ""
     if platform_hint in ("meta", "tiktok", "google_ads"):
         hint_line = (
@@ -335,7 +430,7 @@ async def run_campaign_agent(
 
                 try:
                     result = await asyncio.to_thread(
-                        _dispatch_tool, tool_name, tool_args, brand_config, tool_outputs
+                        _dispatch_tool, tool_name, tool_args, brand_config, tool_outputs, extracted_params
                     )
                 except Exception as e:
                     yield _sse("error", {"message": f"Error en tool {tool_name}: {str(e)}"})

@@ -78,7 +78,8 @@ tenant-agnostic. Romperlo rompe el multitenant sin que ningún test falle.
 
 ```python
 budget_validator(monto_usd: float, brand_config: dict, duracion_dias: int) -> dict
-audience_analyzer(objetivo: str, brand_config: dict) -> dict
+audience_analyzer(objetivo: str, brand_config: dict, paises_explícitos: list[str] | None = None,
+                  edad_min_explícita: int | None = None, edad_max_explícita: int | None = None) -> dict
 platform_recommender(objetivo: str, audiencia: dict, brand_config: dict,
                      presupuesto_usd: float = 0.0) -> dict
 copy_generator(producto: str, audiencia: dict, canal: str, tono: dict,
@@ -93,6 +94,11 @@ report_generator(campaign_result: dict, all_tool_outputs: dict) -> str  # markdo
 El schema que ve el LLM (`_TOOL_DEFINITIONS` en `agents/campaign_agent.py`) expone **menos**
 parámetros que la firma de Python: el agente inyecta el resto (`brand_config`, `audiencia`,
 `presupuesto_usd`). Si agregás un parámetro, decidí explícitamente de qué lado va.
+
+**Nota sobre `audience_analyzer`**: Los parámetros opcionales `paises_explícitos`, `edad_min_explícita`,
+`edad_max_explícita` son restricciones vinculantes extraídas del prompt del usuario. Si se especifican,
+el LLM es instruido a respetarlos y no modificarlos. Post-LLM, una validación fuerza estos valores
+si el LLM intenta ignorarlos. Solo úsalos si vienen del usuario explícitamente (no del brand_config).
 
 Tres reglas al escribir o modificar una tool:
 

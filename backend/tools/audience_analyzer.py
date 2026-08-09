@@ -26,15 +26,40 @@ def _clamp_age(value, fallback: int) -> int:
 def audience_analyzer(
     objetivo: str,
     brand_config: dict,
+    paises_explícitos: list[str] | None = None,
+    edad_min_explícita: int | None = None,
+    edad_max_explícita: int | None = None,
 ) -> dict:
-    paises = brand_config.get("publico_paises", ["Colombia", "Mexico"])
+    """Configura la audiencia óptima para campañas de publicidad.
+
+    Analiza el objetivo de la campaña y genera una segmentación de audiencia óptima
+    usando el LLM. Respeta restricciones explícitas del usuario sobre país y edad.
+
+    Args:
+        objetivo: Objetivo de negocio de la campaña (ej: "Vender camisetas en Colombia").
+        brand_config: Configuración de la marca (country defaults, age ranges, etc).
+        paises_explícitos: Países específicos que el usuario pidió (override brand defaults).
+        edad_min_explícita: Edad mínima específica que el usuario pidió (vinculante).
+        edad_max_explícita: Edad máxima específica que el usuario pidió (vinculante).
+
+    Returns:
+        Dict con: intereses, edad_min, edad_max, paises, tamano_estimado, exclusiones, rationale.
+        Si el usuario especificó constraints, estos son RESPETADOS (no modificados por LLM).
+    """
+    # Use explicit countries if provided; otherwise fall back to brand_config
+    if paises_explícitos is not None:
+        paises = paises_explícitos
+    else:
+        paises = brand_config.get("publico_paises", ["Colombia"])
     edad_min_base = brand_config.get("publico_edad_min", 25)
     edad_max_base = brand_config.get("publico_edad_max", 55)
     intereses_base = brand_config.get("publico_intereses", [])
     roles = brand_config.get("publico_roles", [])
 
     intereses, exclusiones, edad_min, edad_max, rationale = _llm_audience(
-        objetivo, paises, edad_min_base, edad_max_base, intereses_base, roles, brand_config
+        objetivo, paises, edad_min_base, edad_max_base, intereses_base, roles, brand_config,
+        edad_min_explícita=edad_min_explícita,
+        edad_max_explícita=edad_max_explícita,
     )
 
     tamano_estimado = _estimate_reach(paises, edad_min, edad_max, len(intereses))
@@ -58,10 +83,25 @@ def _llm_audience(
     intereses_base: list[str],
     roles: list[str],
     brand_config: dict,
+    edad_min_explícita: int | None = None,
+    edad_max_explícita: int | None = None,
 ) -> tuple[list[str], list[str], int, int, str]:
+    """Llama al LLM para analizar la audiencia con constraints opcionales.
+
+    Si hay restricciones explícitas (edad_min/max del usuario), las inyecta en el prompt
+    como RESTRICCIÓN DEL USUARIO. Post-LLM valida que el LLM las respete; si no, fuerza.
+    """
     nombre = brand_config.get("negocio_nombre", "")
     industria = brand_config.get("negocio_industria", "")
     propuesta = brand_config.get("propuesta_de_valor", "")
+
+    # Build constraint string if user specified explicit age range
+    constraints_str = ""
+    if edad_min_explícita is not None and edad_max_explícita is not None:
+        constraints_str = (
+            f"\n⚠️ RESTRICCIÓN DEL USUARIO: Rango de edad = {edad_min_explícita}-{edad_max_explícita}. "
+            f"Respetá exactamente este rango, no lo modifiques. Solo ajusta intereses y exclusiones."
+        )
 
     messages = [
         {
@@ -91,6 +131,7 @@ def _llm_audience(
                 f"Intereses base de la marca: {intereses_base}\n"
                 f"Países: {paises}\n"
                 f"Rango de edad de referencia de la marca: {edad_min_base}-{edad_max_base}"
+                f"{constraints_str}"
             ),
         },
     ]
@@ -106,6 +147,19 @@ def _llm_audience(
         edad_max = _clamp_age(data.get("edad_max"), edad_max_base)
         if edad_min >= edad_max:  # sanity: garantizar un rango válido
             edad_min, edad_max = edad_min_base, edad_max_base
+
+        # Validate explicit constraints (if ignored by LLM, force-set)
+        if edad_min_explícita is not None and edad_max_explícita is not None:
+            if edad_min != edad_min_explícita or edad_max != edad_max_explícita:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "LLM ignored age constraint (%d-%d); forcing to %d-%d",
+                    edad_min, edad_max,
+                    edad_min_explícita, edad_max_explícita
+                )
+                edad_min = edad_min_explícita
+                edad_max = edad_max_explícita
+
         return (
             data.get("intereses", intereses_base),
             data.get("exclusiones", []),
