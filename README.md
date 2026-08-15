@@ -215,6 +215,7 @@ Convenciones transversales:
 | `POST` | `/campaign/refine` | 15/min | ✅ | Ajusta un plan según feedback, con 1 sola llamada al LLM |
 | `GET` | `/campaign/{id}` | — | — | Estado de una campaña **en memoria del proceso** |
 | `GET` | `/campaigns` | 30/min | — | Historial desde Supabase (por `account_id` si hay JWT, si no por `brand_id`) |
+| `GET` | `/campaigns/{id}/metrics` | 30/min | — | Métricas diarias de la campaña. **JWT obligatorio** (401 sin auth). Query opcionales: `from`, `to` (ISO date), `limit` (máx. 90) |
 | `PATCH` | `/campaigns/{id}` | 20/min | ✅ | Cambia estado: `ACTIVE` \| `PAUSED` |
 | `DELETE` | `/campaigns/{id}` | 20/min | ✅ | Borrado **lógico** (`deleted_at`) |
 
@@ -332,6 +333,7 @@ que haya que tocarlo.
 | `accounts` | `email` UNIQUE, `password_hash` bcrypt, `plan` (`starter`\|`growth`\|`scale`, **cosmético**: no hay billing), `brand_id` → `brand_configs` |
 | `platform_connections` | Tokens cifrados con Fernet. `UNIQUE (adkio_account_id, platform)` → una cuenta conecta como máximo 1 ad account por plataforma. `extra_jsonb` es donde vive `META_PAGE_ID` |
 | `campaigns` | Historial de campañas lanzadas. **No está en `schema.sql`** |
+| `campaign_metrics` | Métricas diarias por `(account_id, platform, campaign_id, metric_date)`. `account_id` obligatorio. `clicks` puede quedar en 0 hasta la ingesta (ADK-16). Sin FK a `campaigns` |
 | `whitelist` | Altas del webhook de Tally, upsert por `email` |
 
 Columnas de `campaigns` que el backend escribe (`_CAMPAIGN_FIELDS` en `db/supabase_client.py`):
@@ -340,6 +342,11 @@ Columnas de `campaigns` que el backend escribe (`_CAMPAIGN_FIELDS` en `db/supaba
 `expected_leads`, `cpl_usd`, `cpl_min_usd`, `cpl_max_usd`, `platform`, `is_mock`; más `deleted_at`
 y `created_at`. **Cualquier clave fuera de ese set se descarta en silencio al insertar.**
 
+Columnas de `campaign_metrics` que el backend escribe (`_METRICS_FIELDS`): `account_id`,
+`brand_id`, `platform`, `campaign_id`, `metric_date`, `impressions`, `reach`, `clicks`,
+`spend_usd`. Upsert por el UNIQUE diario; listado siempre filtra por `account_id`. No hay
+escritura HTTP pública — solo helpers Python. `clicks` se llena con la ingesta (ADK-16).
+
 | Migración | Qué agrega |
 |---|---|
 | `001_multitenant.sql` | `accounts` + `platform_connections` + RLS |
@@ -347,6 +354,7 @@ y `created_at`. **Cualquier clave fuera de ese set se descarta en silencio al in
 | `003_campaign_metadata.sql` | `platform`, `cpl_min_usd`, `cpl_max_usd`, `is_mock` |
 | `004_campaign_soft_delete.sql` | `campaigns.deleted_at` |
 | `005_account_brand.sql` | `accounts.brand_id` → una marca por cuenta |
+| `006_campaign_metrics.sql` | Tabla `campaign_metrics` (grano diario, UNIQUE por tenant+plataforma+campaña+fecha) |
 
 ---
 

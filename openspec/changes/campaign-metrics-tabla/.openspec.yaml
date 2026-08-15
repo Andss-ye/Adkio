@@ -1,0 +1,3 @@
+schema: spec-driven
+created: 2026-08-15
+goal: Persistir métricas diarias de campañas con tenancy y endpoint de lectura mínimo
