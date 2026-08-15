@@ -17,7 +17,7 @@
 
 - [x] 4.1 Actualizar `README.md` (fila API + modelo de datos `campaign_metrics`)
 - [x] 4.2 Verificar checklist ADK-9: migración+schema, insert/leer, sin tocar `_CAMPAIGN_FIELDS`, sin cron
-- [ ] 4.3 Abrir PR a `main` con `Linear: ADK-9` (Julián)
+- [x] 4.3 Abrir PR a `main` con `Linear: ADK-9` (Julián)
 
 ## 5. Operación post-PR (después de que exista el PR)
 
