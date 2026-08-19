@@ -74,6 +74,11 @@ durante la planificación. Eventos: `tool_start`, `tool_result`, `plan_ready`, `
 **Invariante: tools y adapters nunca leen env ni DB.** Es lo que mantiene el core stateless y
 tenant-agnostic. Romperlo rompe el multitenant sin que ningún test falle.
 
+**Meta habla por el SDK (`facebook-business`), no por el MCP oficial.** Los Ads AI Connectors
+(`mcp.facebook.com/ads` y `@meta/ads-cli`) evitan el App Review, pero meten un LLM o un binario
+Node en el camino del gasto. Crear, aprobar, activar y leer métricas se quedan en el SDK; listar
+assets va por Graph directo con `httpx`, como ya hace `connections.py`.
+
 ### Contratos de las tools
 
 ```python
