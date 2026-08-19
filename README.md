@@ -330,7 +330,8 @@ que haya que tocarlo.
 |---|---|
 | `brand_configs` | Una fila por marca. `slug` es el lookup amigable (`demo-edu-latam`); `get_brand_config` acepta slug o UUID. Campos de negocio en español, arrays `TEXT[]` para roles/países/intereses/tono, `metadata` JSONB para lo inferido en onboarding |
 | `accounts` | `email` UNIQUE, `password_hash` bcrypt, `plan` (`starter`\|`growth`\|`scale`, **cosmético**: no hay billing), `brand_id` → `brand_configs` |
-| `platform_connections` | Tokens cifrados con Fernet. `UNIQUE (adkio_account_id, platform)` → una cuenta conecta como máximo 1 ad account por plataforma. `extra_jsonb` es donde vive `META_PAGE_ID` |
+| `platform_connections` | Tokens cifrados con Fernet. `UNIQUE (adkio_account_id, platform)` → una cuenta conecta una credencial por plataforma; los assets que esa credencial alcanza viven en `platform_assets` |
+| `platform_assets` | Los ad accounts, páginas y cuentas de Instagram que alcanza una conexión, una fila cada uno. `is_selected` marca el que usa el launcher, con un índice único parcial que impide dos elegidos del mismo `asset_type` |
 | `campaigns` | Historial de campañas lanzadas. **No está en `schema.sql`** |
 | `whitelist` | Altas del webhook de Tally, upsert por `email` |
 
@@ -347,6 +348,9 @@ y `created_at`. **Cualquier clave fuera de ese set se descarta en silencio al in
 | `003_campaign_metadata.sql` | `platform`, `cpl_min_usd`, `cpl_max_usd`, `is_mock` |
 | `004_campaign_soft_delete.sql` | `campaigns.deleted_at` |
 | `005_account_brand.sql` | `accounts.brand_id` → una marca por cuenta |
+| `006_platform_assets.sql` | `platform_assets` + backfill desde `extra_jsonb` de las conexiones existentes |
+
+Cambiar el asset elegido se hace en **una sola sentencia** (`SET is_selected = (external_id = '<nuevo>')`) o dentro de una transacción que primero apague el anterior: el índice único parcial rechaza dos elegidos del mismo tipo.
 
 ---
 
