@@ -7,6 +7,7 @@ Endpoints:
   POST /campaign/approve      → lanza campaña, retorna reporte
   GET  /campaign/{id}         → estado de una campaña en memoria
   GET  /campaigns             → historial de campañas desde Supabase
+  GET  /campaigns/{id}/metrics → métricas diarias (JWT obligatorio)
   DELETE /campaigns/{id}      → borra campaña de Supabase (hard delete)
   POST /onboarding/start
   POST /onboarding/message
@@ -36,7 +37,7 @@ if _missing:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, HTTPException, Query, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, field_validator, model_validator
@@ -54,6 +55,7 @@ from backend.agents.onboarding_agent import onboarding_agent
 from backend.db.supabase_client import (
     get_brand_config,
     list_campaigns,
+    list_campaign_metrics,
     delete_campaign,
     set_campaign_status,
     update_brand_config,
@@ -384,6 +386,47 @@ async def get_campaigns(
     if account_id:
         return list_campaigns(account_id=account_id, limit=limit)
     return list_campaigns(brand_id=brand_id, limit=limit)
+
+
+def _parse_iso_date(value: Optional[str], nombre: str) -> Optional[str]:
+    if not value:
+        return None
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{nombre} debe ser una fecha ISO (YYYY-MM-DD)",
+        )
+    return value
+
+
+@app.get("/campaigns/{campaign_id}/metrics")
+@limiter.limit("30/minute")
+async def get_campaign_metrics(
+    request: Request,
+    campaign_id: str,
+    date_from: Optional[str] = Query(None, alias="from"),
+    date_to: Optional[str] = Query(None, alias="to"),
+    limit: int = 90,
+) -> list:
+    """Métricas diarias de una campaña. JWT obligatorio — sin auth no hay tenant."""
+    account_id = getattr(request.state, "account_id", None)
+    if not account_id:
+        raise HTTPException(status_code=401, detail="se requiere autenticación")
+    if not re.match(r"^[a-zA-Z0-9_\-]{1,128}$", campaign_id):
+        raise HTTPException(status_code=400, detail="campaign_id inválido")
+    if limit > 90:
+        limit = 90
+    if limit < 1:
+        limit = 1
+    return list_campaign_metrics(
+        account_id=account_id,
+        campaign_id=campaign_id,
+        date_from=_parse_iso_date(date_from, "from"),
+        date_to=_parse_iso_date(date_to, "to"),
+        limit=limit,
+    )
 
 
 @app.delete("/campaigns/{campaign_id}")

@@ -1,6 +1,6 @@
 """
-Cliente Supabase para brand_configs.
-Toda la persistencia de marcas pasa por este módulo.
+Cliente Supabase para brand_configs, campaigns y campaign_metrics.
+Toda la persistencia de esas tablas pasa por este módulo.
 """
 import os
 from typing import Optional
@@ -197,3 +197,76 @@ def set_campaign_status(campaign_id: str, status: str) -> bool:
         .execute()
     )
     return bool(result.data)
+
+
+# ── Campaign metrics ───────────────────────────────────────────────────────
+
+# Whitelist propia — no mezclar con _CAMPAIGN_FIELDS (gotcha: claves fuera
+# de ese set se descartan en silencio al insertar campaigns).
+_METRICS_FIELDS = {
+    "account_id", "brand_id", "platform", "campaign_id", "metric_date",
+    "impressions", "reach", "clicks", "spend_usd",
+}
+
+# Columnas del UNIQUE nombrado campaign_metrics_account_platform_campaign_date_key.
+# PostgREST on_conflict espera los nombres de columna, no el nombre del constraint.
+_METRICS_ON_CONFLICT = "account_id,platform,campaign_id,metric_date"
+
+_METRICS_REQUIRED = ("account_id", "platform", "campaign_id", "metric_date")
+
+
+def upsert_campaign_metrics(data: dict) -> str:
+    """Inserta o actualiza métricas diarias. Retorna el UUID de la fila.
+
+    Requiere account_id. Campos de métrica omitidos usan DEFAULT 0 en insert
+    y no se pisan en un upsert parcial.
+    """
+    if not data.get("account_id"):
+        raise ValueError("account_id es obligatorio para persistir métricas")
+    missing = [k for k in _METRICS_REQUIRED if not data.get(k)]
+    if missing:
+        raise ValueError(f"faltan campos obligatorios: {', '.join(missing)}")
+
+    client = _get_client()
+    payload = {k: v for k, v in data.items() if k in _METRICS_FIELDS and v is not None}
+    result = (
+        client.table("campaign_metrics")
+        .upsert(payload, on_conflict=_METRICS_ON_CONFLICT)
+        .execute()
+    )
+    if not result.data:
+        raise RuntimeError("Supabase no devolvió datos al hacer upsert campaign_metrics")
+    return result.data[0]["id"]
+
+
+def list_campaign_metrics(
+    account_id: str,
+    campaign_id: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    limit: int = 90,
+) -> list[dict]:
+    """Lista métricas diarias. Siempre filtra por account_id (tenancy fuerte)."""
+    if not account_id:
+        raise ValueError("account_id es obligatorio para listar métricas")
+    if limit < 1:
+        limit = 1
+    if limit > 90:
+        limit = 90
+
+    client = _get_client()
+    q = (
+        client.table("campaign_metrics")
+        .select("*")
+        .eq("account_id", account_id)
+        .order("metric_date", desc=True)
+        .limit(limit)
+    )
+    if campaign_id:
+        q = q.eq("campaign_id", campaign_id)
+    if date_from:
+        q = q.gte("metric_date", date_from)
+    if date_to:
+        q = q.lte("metric_date", date_to)
+    return q.execute().data or []
+
