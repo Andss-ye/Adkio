@@ -1,0 +1,64 @@
+# Blueprint de Render: backend FastAPI (Docker) + frontend SPA estático.
+# Supabase queda fuera (igual que en Railway).
+#
+# Deploy: Dashboard Render → New → Blueprint → este repo.
+# Docs: https://render.com/docs/infrastructure-as-code
+#
+# Importante:
+# - El backend NO debe ir en plan free: se duerme a los 15 min y el SSE de
+#   /campaign (20–90s) falla en el cold start (~1 min).
+# - Dejá 1 instancia: el estado de campañas/conversaciones vive en memoria.
+# - El contexto Docker es la raíz del repo (los Dockerfiles copian backend/ y frontend/).
+
+services:
+  - type: web
+    name: adkio-backend
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    numInstances: 1
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: LLM_MODEL
+        value: anthropic/claude-sonnet-4-5
+      - key: ADKIO_REQUIRE_AUTH
+        value: "false"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: PLATFORM_TOKENS_ENC_KEY
+        sync: false
+      - key: ALLOWED_ORIGINS
+        fromService:
+          name: adkio-frontend
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+
+  - type: web
+    name: adkio-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_BACKEND_URL
+        fromService:
+          name: adkio-backend
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: VITE_API_KEY
+        sync: false

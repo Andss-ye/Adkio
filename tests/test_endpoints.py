@@ -214,3 +214,52 @@ class TestGetCampaign:
         r = client.get("/campaign/act_roundtrip_111")
         assert r.status_code == 200
         assert r.json()["report"] == "# Full Report"
+
+
+# ── GET /campaigns/{id}/metrics ────────────────────────────────────────────
+
+_METRICS_JWT = {"type": "access", "account_id": "acct-a", "email": "a@test.com"}
+
+
+class TestGetCampaignMetrics:
+    def test_sin_jwt_devuelve_401(self):
+        r = client.get("/campaigns/camp_1/metrics")
+        assert r.status_code == 401
+
+    def test_con_jwt_solo_filas_del_tenant(self):
+        filas = [{
+            "account_id": "acct-a",
+            "platform": "meta",
+            "campaign_id": "camp_1",
+            "metric_date": "2026-08-15",
+            "impressions": 10,
+            "reach": 8,
+            "clicks": 2,
+            "spend_usd": 1.5,
+        }]
+        with patch(
+            "backend.middleware.tenant.decode_token",
+            return_value=_METRICS_JWT,
+        ), patch("backend.main.list_campaign_metrics", return_value=filas) as mock_list:
+            r = client.get(
+                "/campaigns/camp_1/metrics",
+                headers={"Authorization": "Bearer fake-token"},
+            )
+        assert r.status_code == 200
+        assert r.json() == filas
+        assert mock_list.call_args.kwargs["account_id"] == "acct-a"
+        assert mock_list.call_args.kwargs["campaign_id"] == "camp_1"
+
+    def test_campana_de_otro_tenant_lista_vacia(self):
+        with patch(
+            "backend.middleware.tenant.decode_token",
+            return_value=_METRICS_JWT,
+        ), patch("backend.main.list_campaign_metrics", return_value=[]) as mock_list:
+            r = client.get(
+                "/campaigns/camp_de_b/metrics",
+                headers={"Authorization": "Bearer fake-token"},
+            )
+        assert r.status_code == 200
+        assert r.json() == []
+        assert mock_list.call_args.kwargs["account_id"] == "acct-a"
+

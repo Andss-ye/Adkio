@@ -1,5 +1,5 @@
 -- ────────────────────────────────────────────────────────────────────────────
--- Adkio · Migración 006: platform_assets
+-- Adkio · Migración 007: platform_assets
 -- Pegar en: https://supabase.com/dashboard/project/aphrujuaklsytbnhcthm/sql/new
 -- ────────────────────────────────────────────────────────────────────────────
 --
