@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "adkio",
+  "description": "Plugins internos del equipo Adkio",
+  "owner": {
+    "name": "Equipo Adkio",
+    "url": "https://github.com/Andss-ye/Adkio"
+  },
+  "plugins": [
+    {
+      "name": "adkio-workflow",
+      "description": "Reglas, guardrails y comandos del repo Adkio: bloquea atribución a Claude en commits, verifica las bases del proyecto en cada edición, y automatiza checkpoints con el formato de summary del equipo.",
+      "source": "./plugins/adkio-workflow",
+      "category": "workflow"
+    }
+  ]
+}

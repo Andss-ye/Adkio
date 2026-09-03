@@ -23,6 +23,8 @@ API y qué hay en la base de datos.
 | [`docs/COMPETITIVE_BRIEF.md`](docs/COMPETITIVE_BRIEF.md) | Panorama competitivo y posicionamiento |
 | [`docs/adr/`](docs/adr/) | Decisiones de arquitectura registradas |
 | [`CLAUDE.md`](CLAUDE.md) | Contexto operativo para agentes de código |
+| `openspec/` | Historias de usuario y propuestas de cambio — ver [Flujo de trabajo](#flujo-de-trabajo) |
+| [`plugins/adkio-workflow/`](plugins/adkio-workflow/README.md) | Plugin de Claude Code del equipo: guardrails, comandos de checkpoint y PR |
 
 ---
 
@@ -99,6 +101,57 @@ pytest -k "resolver" -v                  # por patrón
 
 `pytest.ini` fija `asyncio_mode = auto`: las corrutinas se testean sin decorador.
 `scripts/*.py` son smoke tests **manuales** contra APIs reales — pytest no los corre.
+
+---
+
+## Flujo de trabajo
+
+Las historias de usuario y las propuestas de cambio se manejan con
+[OpenSpec](https://github.com/Fission-AI/OpenSpec), instalado como devDependency en la raíz.
+Un cambio pasa por cuatro artefactos: `proposal.md` (el problema y las historias) →
+`specs/<capability>/spec.md` (comportamiento esperado) → `design.md` (cómo) → `tasks.md` (pasos).
+
+```bash
+npm install                # instala el CLI (raíz; el frontend tiene su propio package.json)
+npm run spec:list          # changes activos
+npm run spec:dashboard     # dashboard interactivo de specs y changes
+npm run spec:validate      # valida artefactos
+```
+
+Desde Claude Code: `/opsx:propose "<idea>"` genera los cuatro artefactos, `/opsx:apply` implementa un
+change aprobado, `/opsx:archive` lo cierra. Proponer e implementar están separados a propósito:
+proponer no toca código.
+
+`openspec/config.yaml` lleva el contexto del proyecto y las reglas por artefacto (historias en
+formato "Como… quiero… para…" con criterios Dado/Cuando/Entonces, y las bases que ninguna propuesta
+puede romper). Si cambian las bases, actualizá ese archivo junto con
+[`docs/CODESTYLE.md`](docs/CODESTYLE.md).
+
+> OpenSpec envía estadísticas de uso anónimas por default. Para desactivarlo:
+> `OPENSPEC_TELEMETRY=0` o `npx openspec config set telemetry.enabled false` (config global de la
+> máquina, no del repo).
+
+### Guardrails y checkpoints
+
+El repo trae un plugin de Claude Code ([`plugins/adkio-workflow/`](plugins/adkio-workflow/README.md))
+que aplica las reglas del proyecto de forma automática y cierra cada bloque de trabajo con
+verificación. Instalación desde un clon:
+
+```bash
+claude plugin marketplace add ./
+claude plugin install adkio-workflow@adkio
+```
+
+Da cinco comandos (`/adkio:checkpoint`, `/adkio:verify`, `/adkio:summary`, `/adkio:pr`,
+`/adkio:bases`) y cuatro hooks que corren solos: bloquean commits con atribución a Claude,
+avisan cuando una edición rompe una base arquitectónica, e inyectan el estado del repo al
+arrancar la sesión.
+
+El gauntlet de verificación se puede correr suelto, sin Claude Code:
+
+```bash
+bash plugins/adkio-workflow/scripts/verify.sh
+```
 
 ---
 
