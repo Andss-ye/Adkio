@@ -14,9 +14,18 @@ _CHECKLIST = {
     "learning_phase_cubierta": lambda p: (p.get("duracion_dias", 0) or 0) >= 7,
     "headline_length_ok": lambda p: len(p.get("copy", {}).get("headline", "")) <= 40,
     "body_no_vacio": lambda p: len(p.get("copy", {}).get("body", "")) > 10,
+    # `claims` lo inyecta el agente con la salida de claims_validator. Sin esa
+    # clave el check pasa: los callers viejos no se rompen.
+    "copy_sin_claims_riesgosos": lambda p: p.get("claims", {}).get("passed", True) is not False,
 }
 
-_BLOCKER_KEYS = {"tiene_copy", "tiene_audiencia", "tiene_presupuesto_valido", "tiene_paises"}
+_BLOCKER_KEYS = {
+    "tiene_copy",
+    "tiene_audiencia",
+    "tiene_presupuesto_valido",
+    "tiene_paises",
+    "copy_sin_claims_riesgosos",
+}
 
 
 def campaign_validator(campaign_params: dict) -> dict:
@@ -50,6 +59,7 @@ def _humanize(keys: list[str]) -> list[str]:
         "learning_phase_cubierta": "La campaña dura menos de 7 días — Meta no completará la fase de aprendizaje.",
         "headline_length_ok": "El headline supera los 40 caracteres recomendados por Meta.",
         "body_no_vacio": "El body copy está vacío o es demasiado corto.",
+        "copy_sin_claims_riesgosos": "El copy tiene claims que Meta rechaza — mirá el detalle de claims_validator.",
     }
     return [messages_map.get(k, k) for k in keys]
 

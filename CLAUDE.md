@@ -139,12 +139,16 @@ platform_recommender(objetivo: str, audiencia: dict, brand_config: dict,
                      presupuesto_usd: float = 0.0) -> dict
 copy_generator(producto: str, audiencia: dict, canal: str, tono: dict,
                nivel_consciencia: str) -> dict
+claims_validator(copy: dict, industria: str = "") -> dict
 campaign_validator(campaign_params: dict) -> dict
 campaign_launcher(canal: str, copy: dict, targeting: dict, budget: float,
                   duracion_dias: int, platform: str | None = None) -> dict
 campaign_remover(platform: str, campaign_id: str, confirm: bool = False) -> dict
 report_generator(campaign_result: dict, all_tool_outputs: dict) -> str  # markdown
 ```
+
+`claims_validator` **no está** en `_TOOL_DEFINITIONS`: lo corre el agente solo, antes de
+`campaign_validator`, con sus propios eventos SSE. Un guardrail que el LLM puede saltarse no sirve.
 
 El schema que ve el LLM (`_TOOL_DEFINITIONS` en `agents/campaign_agent.py`) expone **menos**
 parámetros que la firma de Python: el agente inyecta el resto (`brand_config`, `audiencia`,

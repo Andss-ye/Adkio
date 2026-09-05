@@ -221,3 +221,73 @@ async def test_approve_report_content_passed_through():
         result = await approve_and_launch(plan)
 
     assert result["report"] == "REPORTE ESPECIFICO"
+
+
+# ── claims_validator — guardrail antes del checklist final ────────────────
+
+def _stub_tools_con_copy(headline: str, body: str = "Cuerpo neutro de la campaña."):
+    """Los mismos stubs, con el copy que se quiera revisar."""
+    tools = _stub_tools()
+    tools[2] = patch(
+        "backend.agents.campaign_agent.copy_generator",
+        return_value={"headline": headline, "body": body, "cta": "Ver más", "rationale": "OK"},
+    )
+    return tools
+
+
+async def _events_con_copy(headline: str):
+    patches = _stub_tools_con_copy(headline)
+    with patch("backend.agents.campaign_agent.call_llm", side_effect=_build_llm_sequence()), \
+         patches[0], patches[1], patches[2], patches[3]:
+        return await _collect_events()
+
+
+@pytest.mark.asyncio
+async def test_agent_emite_claims_validator():
+    """No está en _TOOL_DEFINITIONS pero igual aparece en el stream."""
+    events = await _events_con_copy("Café de origen")
+    started = [e[1]["tool"] for e in events if e[0] == "tool_start"]
+    assert "claims_validator" in started
+
+
+@pytest.mark.asyncio
+async def test_claims_validator_corre_antes_del_checklist():
+    events = await _events_con_copy("Café de origen")
+    orden = [e[1]["tool"] for e in events if e[0] == "tool_start"]
+    assert orden.index("claims_validator") < orden.index("campaign_validator")
+
+
+@pytest.mark.asyncio
+async def test_plan_incluye_claims():
+    events = await _events_con_copy("Café de origen")
+    plan = next(e[1]["plan"] for e in events if e[0] == "plan_ready")
+    assert plan["claims"]["passed"] is True
+
+
+@pytest.mark.asyncio
+async def test_copy_con_claim_bloqueado_llega_al_stream():
+    events = await _events_con_copy("Resultados garantizados en 30 días")
+    claims = next(
+        e[1]["result"] for e in events
+        if e[0] == "tool_result" and e[1]["tool"] == "claims_validator"
+    )
+    assert claims["passed"] is False
+    assert claims["blockers"]
+
+
+@pytest.mark.asyncio
+async def test_claims_validator_degrada_sin_romper_el_stream():
+    """Si el guardrail explota, el agente igual tiene que llegar a plan_ready."""
+    patches = _stub_tools()
+    with patch("backend.agents.campaign_agent.call_llm", side_effect=_build_llm_sequence()), \
+         patch("backend.agents.campaign_agent.claims_validator", side_effect=RuntimeError("boom")), \
+         patches[0], patches[1], patches[2], patches[3]:
+        events = await _collect_events()
+
+    assert "plan_ready" in [e[0] for e in events]
+    claims = next(
+        e[1]["result"] for e in events
+        if e[0] == "tool_result" and e[1]["tool"] == "claims_validator"
+    )
+    assert claims["passed"] is True
+    assert "a mano" in claims["rationale"]
