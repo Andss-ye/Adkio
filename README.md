@@ -308,6 +308,8 @@ Request de `POST /campaign`:
 | `GET` | `/connect/{platform}` | Bearer | Devuelve `authorize_url` para iniciar OAuth |
 | `GET` | `/connect/{platform}/callback` | **público** | Callback del provider → redirige al frontend |
 | `POST` | `/connect/{platform}/manual` | Bearer | Alta pegando access token — **el camino que funciona hoy** |
+| `GET` | `/connect/{platform}/assets` | Bearer | Ad accounts, páginas e IG que alcanza la conexión (`?asset_type=` filtra) |
+| `POST` | `/connect/{platform}/assets/select` | Bearer | Elige con qué asset se publica — `{asset_type, external_id}` |
 | `POST` | `/connect/google_ads/customer` | Bearer | Setea el `customer_id` de Google Ads |
 | `DELETE` | `/connect/{platform}` | Bearer | Desconecta la plataforma |
 
@@ -465,7 +467,8 @@ Railway Variables, nunca en la imagen.
 ### Credenciales de plataforma (single-tenant, leídas por `EnvCredentialResolver`)
 
 - **Meta**: `META_APP_ID`, `META_APP_SECRET`, `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID` (`act_…`),
-  `META_PAGE_ID`, `META_USE_SANDBOX`
+  `META_PAGE_ID`, `META_USE_SANDBOX`, `META_GRAPH_API_VERSION` (default `v25.0`; cada versión de
+  Graph vence ~2 años después de su release)
 - **TikTok**: `TIKTOK_ACCESS_TOKEN`, `TIKTOK_ADVERTISER_ID`, `TIKTOK_APP_ID`, `TIKTOK_APP_SECRET`,
   `TIKTOK_USE_SANDBOX`
 - **Google Ads**: `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`,

@@ -21,6 +21,7 @@ el nombre de plataforma es inválido.
 from __future__ import annotations
 
 import contextvars
+import logging
 import os
 from typing import Optional, Protocol, Union, runtime_checkable
 
@@ -29,6 +30,8 @@ from backend.integrations.credentials import (
     MetaCreds,
     TikTokCreds,
 )
+
+logger = logging.getLogger(__name__)
 
 PlatformName = str  # "meta" | "tiktok" | "google_ads"
 PlatformCreds = Union[MetaCreds, TikTokCreds, GoogleAdsCreds]
@@ -167,20 +170,25 @@ class DBCredentialResolver:
 
         access_token = decrypt_token(row["access_token_encrypted"])
         extra = row.get("extra_jsonb") or {}
+        selected = self._selected_assets(row["id"])
+
+        def chosen(asset_type: str, fallback: Optional[str]) -> Optional[str]:
+            asset = selected.get(asset_type)
+            return (asset or {}).get("external_id") or fallback
 
         if platform == "meta":
             return MetaCreds(
                 app_id=extra.get("app_id") or os.environ.get("META_APP_ID", ""),
                 app_secret=extra.get("app_secret") or os.environ.get("META_APP_SECRET", ""),
                 access_token=access_token,
-                ad_account_id=row["provider_account_id"],
-                page_id=extra.get("page_id"),
+                ad_account_id=chosen("ad_account", row["provider_account_id"]),
+                page_id=chosen("page", extra.get("page_id")),
             )
 
         if platform == "tiktok":
             return TikTokCreds(
                 access_token=access_token,
-                advertiser_id=row["provider_account_id"],
+                advertiser_id=chosen("ad_account", row["provider_account_id"]),
                 app_id=extra.get("app_id") or os.environ.get("TIKTOK_APP_ID"),
                 app_secret=extra.get("app_secret") or os.environ.get("TIKTOK_APP_SECRET"),
                 sandbox=bool(extra.get("sandbox", False)),
@@ -198,11 +206,29 @@ class DBCredentialResolver:
                 client_id=extra.get("client_id") or os.environ.get("GOOGLE_OAUTH_CLIENT_ID", ""),
                 client_secret=extra.get("client_secret") or os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", ""),
                 refresh_token=refresh_token,
-                customer_id=row["provider_account_id"],
+                customer_id=chosen("ad_account", row["provider_account_id"]),
                 login_customer_id=extra.get("login_customer_id"),
             )
 
         return None
+
+    def _selected_assets(self, connection_id: str) -> dict:
+        """Assets elegidos por el cliente, o `{}` si todavía no hay tabla.
+
+        Una DB sin la migración 007 aplicada tiene conexiones que funcionan: acá
+        se degrada al `provider_account_id` de siempre en vez de romper el
+        lanzamiento.
+        """
+        from backend.db.platform_assets import selected_assets
+
+        try:
+            return selected_assets(connection_id, client=self._db)
+        except Exception:  # noqa: BLE001 — sin tabla o sin red, el fallback alcanza
+            logger.warning(
+                "platform_assets unavailable for connection %s, falling back to provider_account_id",
+                connection_id,
+            )
+            return {}
 
 
 # ── Ambient resolver (ContextVar) ──────────────────────────────────────────

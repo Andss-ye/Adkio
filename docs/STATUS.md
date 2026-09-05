@@ -28,6 +28,7 @@ existe: si querés saber si algo está implementado antes de construirlo, empez�
 | Marca por cuenta | Migración 005: cada cuenta tiene su `brand_config`, editable desde Settings |
 | CPL dinámico por contexto | Rango calculado en backend (`cpl_min_usd` / `cpl_max_usd`), no hardcoded |
 | Flag `is_mock` visible en la UI | Banner explícito cuando la campaña no tocó la API real |
+| Assets por conexión (backend) | Migración 007 + `GET/POST /connect/{platform}/assets`: el cliente elige ad account, página e IG, y el resolver publica con eso. **Falta la UI** |
 | Estado real de conexiones | Top bar y drawer leen `/connect/status`; ya no hay "Sincronizado" falso |
 | CTAs de landing respetan sesión | Logueado → `/dashboard`, si no → `/signup` |
 | Confirmación de password en signup | Evita quedar lockeado sin reset |
@@ -168,7 +169,7 @@ Estimado: ~10-15 h de código + ~1 día de setup operativo.
 
 - [ ] `copy_generator` devuelve 3 variantes en lugar de 1
 - [ ] Mapear intereses string → `interest_id` de Meta (hay endpoint de búsqueda en la Marketing API)
-- [ ] Selector de ad account cuando el usuario tiene varios
+- [x] Selector de ad account cuando el usuario tiene varios — backend listo (`platform_assets`); falta cablear el picker
 - [ ] Importar audiencias custom / lookalikes existentes
 - [ ] Configuración de pixel en el onboarding
 - [ ] Estimador de delivery / CPM antes de aprobar

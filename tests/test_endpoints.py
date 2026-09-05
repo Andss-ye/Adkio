@@ -263,3 +263,106 @@ class TestGetCampaignMetrics:
         assert r.json() == []
         assert mock_list.call_args.kwargs["account_id"] == "acct-a"
 
+
+
+# ── /connect/{platform}/assets ─────────────────────────────────────────────
+
+_ASSETS_JWT = {"type": "access", "account_id": "acct-a", "email": "a@test.com"}
+_CONN_ROW = {"id": "conn-1", "platform": "meta", "provider_account_id": "act_1"}
+
+
+def _as_tenant():
+    return patch("backend.middleware.tenant.decode_token", return_value=_ASSETS_JWT)
+
+
+_AUTH = {"Authorization": "Bearer fake-token"}
+
+
+class TestListAssets:
+    def test_sin_jwt_devuelve_401(self):
+        r = client.get("/connect/meta/assets")
+        assert r.status_code == 401
+
+    def test_devuelve_los_assets_de_la_conexion(self):
+        assets = [
+            {"external_id": "act_1", "name": "Principal", "asset_type": "ad_account",
+             "is_selected": True},
+            {"external_id": "act_2", "name": "Agencia", "asset_type": "ad_account",
+             "is_selected": False},
+        ]
+        with _as_tenant(), patch(
+            "backend.api.connections.get_connection", return_value=_CONN_ROW
+        ) as mock_conn, patch(
+            "backend.api.connections.list_assets", return_value=assets
+        ) as mock_list:
+            r = client.get("/connect/meta/assets", headers=_AUTH)
+        assert r.status_code == 200
+        assert r.json()["assets"] == assets
+        # La tenancy es el filtro por account_id, no RLS.
+        assert mock_conn.call_args.args == ("acct-a", "meta")
+        assert mock_list.call_args.args[0] == "conn-1"
+
+    def test_filtra_por_asset_type(self):
+        with _as_tenant(), patch(
+            "backend.api.connections.get_connection", return_value=_CONN_ROW
+        ), patch("backend.api.connections.list_assets", return_value=[]) as mock_list:
+            r = client.get("/connect/meta/assets?asset_type=page", headers=_AUTH)
+        assert r.status_code == 200
+        assert mock_list.call_args.args[1] == "page"
+
+    def test_asset_type_invalido_devuelve_400(self):
+        with _as_tenant():
+            r = client.get("/connect/meta/assets?asset_type=pixel", headers=_AUTH)
+        assert r.status_code == 400
+
+    def test_plataforma_sin_conectar_devuelve_404(self):
+        with _as_tenant(), patch(
+            "backend.api.connections.get_connection", return_value=None
+        ):
+            r = client.get("/connect/meta/assets", headers=_AUTH)
+        assert r.status_code == 404
+
+
+class TestSelectAsset:
+    def test_sin_jwt_devuelve_401(self):
+        r = client.post(
+            "/connect/meta/assets/select",
+            json={"asset_type": "ad_account", "external_id": "act_2"},
+        )
+        assert r.status_code == 401
+
+    def test_elige_el_asset(self):
+        with _as_tenant(), patch(
+            "backend.api.connections.get_connection", return_value=_CONN_ROW
+        ), patch(
+            "backend.api.connections.select_asset", return_value=True
+        ) as mock_select:
+            r = client.post(
+                "/connect/meta/assets/select",
+                json={"asset_type": "ad_account", "external_id": "act_2"},
+                headers=_AUTH,
+            )
+        assert r.status_code == 200
+        assert r.json()["external_id"] == "act_2"
+        assert mock_select.call_args.args == ("conn-1", "ad_account", "act_2")
+
+    def test_asset_ajeno_devuelve_404(self):
+        """No se puede elegir un asset que la conexión no alcanza."""
+        with _as_tenant(), patch(
+            "backend.api.connections.get_connection", return_value=_CONN_ROW
+        ), patch("backend.api.connections.select_asset", return_value=False):
+            r = client.post(
+                "/connect/meta/assets/select",
+                json={"asset_type": "ad_account", "external_id": "act_de_otro"},
+                headers=_AUTH,
+            )
+        assert r.status_code == 404
+
+    def test_asset_type_invalido_devuelve_400(self):
+        with _as_tenant():
+            r = client.post(
+                "/connect/meta/assets/select",
+                json={"asset_type": "pixel", "external_id": "x1"},
+                headers=_AUTH,
+            )
+        assert r.status_code == 400
