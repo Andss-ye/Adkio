@@ -2,6 +2,8 @@
 
 Rutas:
   GET    /connect/status                 → qué plataformas tiene conectadas el user
+  GET    /connect/{platform}/assets      → ad accounts, páginas e IG que alcanza la conexión
+  POST   /connect/{platform}/assets/select → elige con cuál se publica
   GET    /connect/meta                   → redirige a Facebook OAuth
   GET    /connect/meta/callback          → recibe code, intercambia, persiste
   GET    /connect/tiktok                 → redirige a TikTok Business OAuth
@@ -19,6 +21,7 @@ el endpoint devuelve un error claro en vez de romper.
 """
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -28,10 +31,19 @@ from urllib.parse import urlencode
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 
 from backend.auth.jwt_tokens import decode_token
+from backend.db.platform_assets import (
+    ASSET_TYPES,
+    list_assets,
+    select_asset,
+    select_default_if_none,
+    upsert_assets,
+)
 from backend.db.platform_connections import (
     delete_connection,
+    get_connection,
     list_connections,
     mark_validated,
     upsert_connection,
@@ -41,9 +53,30 @@ from jose import jwt
 
 router = APIRouter(prefix="/connect", tags=["connect"])
 
+logger = logging.getLogger(__name__)
+
 ALG = "HS256"
 _FRONTEND_AFTER_OAUTH = os.environ.get(
     "FRONTEND_AFTER_OAUTH_URL", "http://localhost:5173/settings"
+)
+
+_PLATFORMS = ("meta", "tiktok", "google_ads")
+
+# Cada versión de Graph vence ~2 años después de su release y las llamadas
+# empiezan a fallar. Se sube acá, no en cada URL.
+GRAPH_API_VERSION = os.environ.get("META_GRAPH_API_VERSION", "v25.0")
+_GRAPH = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
+
+# `ads_management` publica; `pages_show_list` e `instagram_basic` son los que
+# permiten *descubrir* las páginas y cuentas IG del cliente para el picker.
+META_SCOPES = (
+    "ads_management",
+    "ads_read",
+    "business_management",
+    "pages_show_list",
+    "pages_manage_ads",
+    "pages_read_engagement",
+    "instagram_basic",
 )
 
 
@@ -91,11 +124,69 @@ async def status(request: Request) -> dict:
 
 @router.delete("/{platform}")
 async def disconnect(request: Request, platform: str) -> dict:
-    if platform not in ("meta", "tiktok", "google_ads"):
+    if platform not in _PLATFORMS:
         raise HTTPException(status_code=400, detail="platform inválida")
     aid = _account_id(request)
     deleted = delete_connection(aid, platform)
     return {"deleted": deleted, "platform": platform}
+
+
+# ── Assets de la conexión ──────────────────────────────────────────────────
+#
+# Una credencial alcanza N ad accounts, N páginas y N cuentas de Instagram. Acá
+# el cliente ve cuáles son y elige con cuál publica; el resolver lee esa
+# elección al armar las credenciales.
+
+
+class _SelectAssetBody(BaseModel):
+    asset_type: str
+    external_id: str
+
+
+def _connection_or_404(request: Request, platform: str) -> dict:
+    """La conexión del tenant actual, o 400/404. El filtro por account_id es la tenancy."""
+    if platform not in _PLATFORMS:
+        raise HTTPException(status_code=400, detail="platform inválida")
+    conn = get_connection(_account_id(request), platform)
+    if not conn:
+        raise HTTPException(status_code=404, detail=f"{platform} no está conectada")
+    return conn
+
+
+@router.get("/{platform}/assets")
+async def get_assets(
+    request: Request, platform: str, asset_type: Optional[str] = None
+) -> dict:
+    """Assets descubiertos para esta conexión, con `is_selected` marcando el elegido."""
+    if asset_type and asset_type not in ASSET_TYPES:
+        raise HTTPException(
+            status_code=400, detail=f"asset_type inválido: {asset_type}"
+        )
+    conn = _connection_or_404(request, platform)
+    return {"platform": platform, "assets": list_assets(conn["id"], asset_type)}
+
+
+@router.post("/{platform}/assets/select")
+async def choose_asset(
+    request: Request, platform: str, body: _SelectAssetBody
+) -> dict:
+    """Elige el asset con el que se publica. Uno solo por tipo y conexión."""
+    if body.asset_type not in ASSET_TYPES:
+        raise HTTPException(
+            status_code=400, detail=f"asset_type inválido: {body.asset_type}"
+        )
+    conn = _connection_or_404(request, platform)
+    if not select_asset(conn["id"], body.asset_type, body.external_id.strip()):
+        raise HTTPException(
+            status_code=404,
+            detail="Ese asset no está entre los que alcanza tu conexión. Reconectá la plataforma.",
+        )
+    return {
+        "ok": True,
+        "platform": platform,
+        "asset_type": body.asset_type,
+        "external_id": body.external_id.strip(),
+    }
 
 
 # ── Meta OAuth ─────────────────────────────────────────────────────────────
@@ -116,12 +207,94 @@ async def meta_authorize(request: Request) -> dict:
         "client_id": app_id,
         "redirect_uri": redirect,
         "state": _sign_state(aid),
-        "scope": "ads_management,ads_read,pages_manage_ads,pages_read_engagement",
+        "scope": ",".join(META_SCOPES),
         "response_type": "code",
     }
     return {
-        "authorize_url": f"https://www.facebook.com/v20.0/dialog/oauth?{urlencode(params)}"
+        "authorize_url": f"https://www.facebook.com/{GRAPH_API_VERSION}/dialog/oauth?{urlencode(params)}"
     }
+
+
+async def _discover_meta_assets(client: httpx.AsyncClient, token: str) -> list[dict]:
+    """Ad accounts, páginas y cuentas IG que alcanza el token, en formato asset.
+
+    Los ad accounts son obligatorios —sin uno no hay dónde publicar—; páginas e
+    Instagram son best-effort: mientras la app no tenga aprobados
+    `pages_show_list` / `instagram_basic`, esas llamadas fallan y la conexión
+    igual tiene que quedar guardada.
+    """
+    assets: list[dict] = []
+
+    r = await client.get(
+        f"{_GRAPH}/me/adaccounts",
+        params={"access_token": token, "fields": "id,name,account_status"},
+    )
+    r.raise_for_status()
+    for a in r.json().get("data", []):
+        assets.append(
+            {
+                "asset_type": "ad_account",
+                "external_id": a["id"],  # ya viene como "act_XXX"
+                "name": a.get("name"),
+                "extra": {"account_status": a.get("account_status")},
+            }
+        )
+
+    # Una sola llamada trae las páginas y la cuenta IG colgada de cada una.
+    try:
+        r = await client.get(
+            f"{_GRAPH}/me/accounts",
+            params={
+                "access_token": token,
+                "fields": "id,name,instagram_business_account{id,username}",
+            },
+        )
+        r.raise_for_status()
+        pages = r.json().get("data", [])
+    except httpx.HTTPError:
+        logger.warning("meta: pages discovery failed, connection keeps ad accounts only")
+        pages = []
+
+    for p in pages:
+        assets.append(
+            {"asset_type": "page", "external_id": p["id"], "name": p.get("name")}
+        )
+        ig = p.get("instagram_business_account") or {}
+        if ig.get("id"):
+            assets.append(
+                {
+                    "asset_type": "instagram",
+                    "external_id": ig["id"],
+                    "name": ig.get("username"),
+                    "parent_external_id": p["id"],
+                }
+            )
+    return assets
+
+
+def _persist_assets(
+    connection_id: str, assets: list[dict], force_select: bool = False
+) -> None:
+    """Guarda los assets y deja uno elegido por tipo si el cliente no eligió aún.
+
+    `force_select` es para cuando el asset viene de una elección explícita del
+    usuario y tiene que pisar la anterior.
+
+    Una DB sin la migración 007 no puede tumbar una conexión que ya se guardó:
+    el resolver cae a `provider_account_id` y el picker aparece vacío.
+    """
+    try:
+        upsert_assets(connection_id, assets)
+        for asset_type in ASSET_TYPES:
+            first = next((a for a in assets if a["asset_type"] == asset_type), None)
+            if not first:
+                continue
+            if force_select:
+                select_asset(connection_id, asset_type, first["external_id"])
+            else:
+                select_default_if_none(connection_id, asset_type, first["external_id"])
+    except Exception:  # noqa: BLE001 — la conexión ya quedó guardada
+        logger.exception("could not persist platform_assets for connection %s", connection_id)
 
 
 @router.get("/meta/callback")
@@ -144,7 +317,7 @@ async def meta_callback(code: str = "", state: str = "") -> RedirectResponse:
         async with httpx.AsyncClient(timeout=15) as client:
             # 1. Code → short-lived access token
             r = await client.get(
-                "https://graph.facebook.com/v20.0/oauth/access_token",
+                f"{_GRAPH}/oauth/access_token",
                 params={
                     "client_id": app_id,
                     "client_secret": app_secret,
@@ -157,7 +330,7 @@ async def meta_callback(code: str = "", state: str = "") -> RedirectResponse:
 
             # 2. Short-lived → long-lived (60 días)
             r = await client.get(
-                "https://graph.facebook.com/v20.0/oauth/access_token",
+                f"{_GRAPH}/oauth/access_token",
                 params={
                     "grant_type": "fb_exchange_token",
                     "client_id": app_id,
@@ -169,39 +342,30 @@ async def meta_callback(code: str = "", state: str = "") -> RedirectResponse:
             long_token = r.json()["access_token"]
             expires_in = r.json().get("expires_in", 60 * 86400)
 
-            # 3. Listar ad accounts disponibles
-            r = await client.get(
-                "https://graph.facebook.com/v20.0/me/adaccounts",
-                params={"access_token": long_token, "fields": "id,name,account_id"},
-            )
-            r.raise_for_status()
-            adaccounts = r.json().get("data", [])
+            # 3. Descubrir los assets que alcanza esta credencial
+            assets = await _discover_meta_assets(client, long_token)
     except httpx.HTTPError as e:
         return _frontend_redirect(False, "meta", f"oauth_error: {str(e)[:80]}")
 
-    if not adaccounts:
+    ad_accounts = [a for a in assets if a["asset_type"] == "ad_account"]
+    if not ad_accounts:
         return _frontend_redirect(False, "meta", "no ad accounts visibles para este usuario")
 
-    # MVP: tomamos el primero — frontend puede ofrecer cambiar después
-    primary = adaccounts[0]
-    ad_account_id = primary["id"]  # ya viene como "act_XXX"
-
-    upsert_connection(
+    connection = upsert_connection(
         account_id=account_id,
         platform="meta",
-        provider_account_id=ad_account_id,
+        # Compat: el resolver cae acá si la conexión todavía no tiene asset elegido.
+        provider_account_id=ad_accounts[0]["external_id"],
         access_token_encrypted=encrypt_token(long_token),
         token_expires_at=datetime.now(timezone.utc) + timedelta(seconds=int(expires_in)),
         extra={
             "app_id": app_id,
             "app_secret": app_secret,
             "page_id": os.environ.get("META_PAGE_ID"),
-            "available_ad_accounts": [
-                {"id": a["id"], "name": a.get("name")} for a in adaccounts
-            ],
         },
-        scopes=["ads_management", "ads_read", "pages_manage_ads", "pages_read_engagement"],
+        scopes=list(META_SCOPES),
     )
+    _persist_assets(connection["id"], assets)
 
     return _frontend_redirect(True, "meta")
 
@@ -260,7 +424,7 @@ async def tiktok_callback(
         return _frontend_redirect(False, "tiktok", "respuesta incompleta de TikTok")
 
     primary = advertiser_ids[0]
-    upsert_connection(
+    connection = upsert_connection(
         account_id=account_id,
         platform="tiktok",
         provider_account_id=str(primary),
@@ -268,10 +432,14 @@ async def tiktok_callback(
         extra={
             "app_id": app_id,
             "app_secret": app_secret,
-            "available_advertiser_ids": advertiser_ids,
             "scope": body.get("scope"),
         },
         scopes=body.get("scope", "").split(",") if body.get("scope") else [],
+    )
+    # Los advertiser_id de TikTok son el mismo concepto que un ad account.
+    _persist_assets(
+        connection["id"],
+        [{"asset_type": "ad_account", "external_id": str(a)} for a in advertiser_ids],
     )
     return _frontend_redirect(True, "tiktok")
 
@@ -394,6 +562,13 @@ async def google_set_customer(request: Request, body: _SetCustomerBody) -> dict:
     )
     if not result.data:
         raise HTTPException(status_code=404, detail="conexión google_ads no encontrada")
+    # El customer_id elegido es el ad account de Google: queda como asset elegido
+    # para que el resolver lea lo mismo en las tres plataformas.
+    _persist_assets(
+        result.data[0]["id"],
+        [{"asset_type": "ad_account", "external_id": customer_id}],
+        force_select=True,
+    )
     return {"customer_id": customer_id, "ok": True}
 
 
@@ -415,7 +590,7 @@ class _ManualConnectBody(__import__("pydantic").BaseModel):
     extra: Optional[dict[str, Any]] = None
 
 
-_VALID_MANUAL_PLATFORMS = ("meta", "tiktok", "google_ads")
+_VALID_MANUAL_PLATFORMS = _PLATFORMS
 
 
 async def _validate_meta_token(access_token: str, ad_account_id: str) -> tuple[bool, str]:
@@ -427,14 +602,14 @@ async def _validate_meta_token(access_token: str, ad_account_id: str) -> tuple[b
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             me = await client.get(
-                "https://graph.facebook.com/v20.0/me",
+                f"{_GRAPH}/me",
                 params={"access_token": access_token, "fields": "id"},
             )
             if me.status_code != 200:
                 err = me.json().get("error", {}).get("message", "token inválido")
                 return False, f"El access_token de Meta no es válido: {err}"
             acct = await client.get(
-                f"https://graph.facebook.com/v20.0/{ad_account_id}",
+                f"{_GRAPH}/{ad_account_id}",
                 params={"access_token": access_token, "fields": "account_id,name"},
             )
             if acct.status_code != 200:
@@ -504,7 +679,7 @@ async def manual_connect(
     refresh_enc = encrypt_token(body.refresh_token) if body.refresh_token else None
 
     try:
-        upsert_connection(
+        connection = upsert_connection(
             account_id=aid,
             platform=platform,
             provider_account_id=pid,
@@ -513,6 +688,14 @@ async def manual_connect(
             extra=extra,
             scopes=[],
         )
+        # El que se pega a mano es el que se usa: sin picker que llenar, pero el
+        # resolver lee siempre desde platform_assets.
+        manual_assets = [{"asset_type": "ad_account", "external_id": pid}]
+        if platform == "meta" and extra.get("page_id"):
+            manual_assets.append(
+                {"asset_type": "page", "external_id": str(extra["page_id"])}
+            )
+        _persist_assets(connection["id"], manual_assets, force_select=True)
         if verified:
             mark_validated(aid, platform)
     except HTTPException:

@@ -1,0 +1,15 @@
+{
+  "name": "adkio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tooling a nivel repo. El frontend tiene su propio package.json en frontend/.",
+  "scripts": {
+    "spec": "openspec",
+    "spec:list": "openspec list",
+    "spec:validate": "openspec validate --strict",
+    "spec:dashboard": "openspec view"
+  },
+  "devDependencies": {
+    "@fission-ai/openspec": "^1.8.0"
+  }
+}

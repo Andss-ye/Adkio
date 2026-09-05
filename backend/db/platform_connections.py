@@ -56,6 +56,25 @@ def list_connections(account_id: str) -> list[dict]:
     return result.data or []
 
 
+def get_connection(account_id: str, platform: str) -> Optional[dict]:
+    """La conexión de (account_id, platform), sin tokens. `None` si no existe.
+
+    El filtro por `adkio_account_id` es el aislamiento real de tenancy: el
+    backend usa la service role key y bypassa RLS.
+    """
+    client = _get_client()
+    result = (
+        client.table("platform_connections")
+        .select("id, platform, provider_account_id, extra_jsonb, scopes")
+        .eq("adkio_account_id", account_id)
+        .eq("platform", platform)
+        .limit(1)
+        .execute()
+    )
+    rows = result.data or []
+    return rows[0] if rows else None
+
+
 def delete_connection(account_id: str, platform: str) -> bool:
     client = _get_client()
     result = (

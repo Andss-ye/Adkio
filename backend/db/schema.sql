@@ -123,3 +123,47 @@ DROP TRIGGER IF EXISTS campaign_metrics_updated_at ON campaign_metrics;
 CREATE TRIGGER campaign_metrics_updated_at
     BEFORE UPDATE ON campaign_metrics
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ─── Multitenant: platform_assets ────────────────────────────────────────
+-- Una credencial da acceso a N ad accounts, N páginas y N cuentas de
+-- Instagram. Sin esto el cliente publica desde la página de Adkio y sobre la
+-- primera ad account que devuelva Graph. Ver migración 007.
+CREATE TABLE IF NOT EXISTS platform_assets (
+    id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    connection_id       UUID        NOT NULL REFERENCES platform_connections(id) ON DELETE CASCADE,
+    asset_type          TEXT        NOT NULL
+                                    CHECK (asset_type IN ('ad_account', 'page', 'instagram')),
+    external_id         TEXT        NOT NULL,       -- act_XXX | advertiser_id | customer_id | page id | ig user id
+    name                TEXT,
+    parent_external_id  TEXT,                       -- la cuenta IG cuelga de una página
+    is_selected         BOOLEAN     NOT NULL DEFAULT FALSE,
+    extra_jsonb         JSONB       NOT NULL DEFAULT '{}',
+    discovered_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (connection_id, asset_type, external_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_platform_assets_connection
+    ON platform_assets (connection_id);
+
+-- Un solo asset elegido por tipo y conexión: el launcher no puede quedar entre
+-- dos ad accounts.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_platform_assets_selected
+    ON platform_assets (connection_id, asset_type)
+    WHERE is_selected;
+
+ALTER TABLE platform_assets ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "tenant_owns_assets" ON platform_assets;
+CREATE POLICY "tenant_owns_assets"
+    ON platform_assets
+    FOR ALL
+    USING (EXISTS (
+        SELECT 1 FROM platform_connections c
+        WHERE c.id = platform_assets.connection_id
+          AND c.adkio_account_id::text = (auth.jwt() ->> 'account_id')
+    ))
+    WITH CHECK (EXISTS (
+        SELECT 1 FROM platform_connections c
+        WHERE c.id = platform_assets.connection_id
+          AND c.adkio_account_id::text = (auth.jwt() ->> 'account_id')
+    ));
