@@ -1,8 +1,12 @@
 """
 Campaign Agent — orchestrates the 4-tool pipeline via litellm tool use.
 
-Flow: budget_validator → audience_analyzer → copy_generator → campaign_validator
+Flow: budget_validator → audience_analyzer → copy_generator → claims_validator
+      → campaign_validator
       (pauses here and streams plan to frontend for human approval)
+
+claims_validator no se le expone al LLM: corre solo, siempre, antes del
+checklist final. Un guardrail que el modelo puede saltarse no es un guardrail.
 
 POST /campaign/approve triggers: campaign_launcher → report_generator
 """
@@ -16,6 +20,7 @@ from backend.tools.budget_validator import budget_validator
 from backend.tools.audience_analyzer import audience_analyzer
 from backend.tools.platform_recommender import platform_recommender
 from backend.tools.copy_generator import copy_generator
+from backend.tools.claims_validator import claims_validator
 from backend.tools.campaign_validator import campaign_validator
 from backend.tools.campaign_launcher import campaign_launcher
 from backend.tools.campaign_remover import campaign_remover
@@ -185,6 +190,32 @@ async def _get_brand_config(brand_id: str) -> dict:
     return config
 
 
+def _run_claims_validator(brand_config: dict, tool_outputs: dict) -> dict:
+    """Corre el guardrail sobre el copy generado y lo guarda en `tool_outputs`.
+
+    Nunca levanta: si algo falla deja pasar la campaña y lo dice en el
+    `rationale`, para que el humano lo revise en vez de quedarse sin plan.
+    """
+    try:
+        result = claims_validator(
+            copy=tool_outputs.get("copy_generator", {}),
+            industria=brand_config.get("negocio_industria", ""),
+        )
+    except Exception:
+        result = {
+            "passed": True,
+            "blockers": [],
+            "warnings": [],
+            "claims": [],
+            "rationale": (
+                "No se pudo revisar el copy contra las políticas de Meta. "
+                "Revisalo a mano antes de aprobar."
+            ),
+        }
+    tool_outputs["claims_validator"] = result
+    return result
+
+
 def _dispatch_tool(
     tool_name: str,
     tool_args: dict,
@@ -249,6 +280,7 @@ def _dispatch_tool(
             "targeting": audience,
             "budget": budget,
             "duracion_dias": tool_outputs.get("_duracion_dias", 14),
+            "claims": tool_outputs.get("claims_validator", {}),
         }
         result = campaign_validator(campaign_params=params)
         tool_outputs["campaign_validator"] = result
@@ -331,6 +363,18 @@ async def run_campaign_agent(
                 except json.JSONDecodeError:
                     tool_args = {}
 
+                # El guardrail corre antes del checklist final aunque el LLM no
+                # lo pida — por eso no está en _TOOL_DEFINITIONS.
+                if (
+                    tool_name == "campaign_validator"
+                    and "claims_validator" not in tool_outputs
+                ):
+                    yield _sse("tool_start", {"tool": "claims_validator", "args": {}})
+                    claims = await asyncio.to_thread(
+                        _run_claims_validator, brand_config, tool_outputs
+                    )
+                    yield _sse("tool_result", {"tool": "claims_validator", "result": claims})
+
                 yield _sse("tool_start", {"tool": tool_name, "args": tool_args})
 
                 try:
@@ -410,6 +454,7 @@ def _build_plan(tool_outputs: dict, brand_config: dict) -> dict:
         "budget": tool_outputs.get("budget_validator", {}),
         "platform_recommendation": tool_outputs.get("platform_recommender", {}),
         "validation": tool_outputs.get("campaign_validator", {}),
+        "claims": tool_outputs.get("claims_validator", {}),
         "duracion_dias": tool_outputs.get("_duracion_dias", 14),
     }
 
@@ -446,6 +491,7 @@ async def approve_and_launch(plan: dict) -> dict:
         "budget_validator": budget,
         "audience_analyzer": targeting,
         "copy_generator": copy,
+        "claims_validator": plan.get("claims", {}),
         "campaign_validator": plan.get("validation", {}),
     }
 
@@ -688,8 +734,16 @@ async def refine_plan(plan: dict, feedback: str, brand_config: dict) -> dict:
             "rationale": f"Ajustado a {platform} por tu pedido.",
         }
 
-    # Validación determinística
-    plan_params = {"copy": copy, "targeting": targeting, "budget": budget, "duracion_dias": duracion}
+    # Validación determinística — el copy refinado se revisa de nuevo: el
+    # usuario puede pedir "más agresivo" y meter un claim que antes no estaba.
+    claims = _run_claims_validator(brand_config, {"copy_generator": copy})
+    plan_params = {
+        "copy": copy,
+        "targeting": targeting,
+        "budget": budget,
+        "duracion_dias": duracion,
+        "claims": claims,
+    }
     validation = _recompute_validation(plan_params, change_summary)
 
     return {
@@ -699,6 +753,7 @@ async def refine_plan(plan: dict, feedback: str, brand_config: dict) -> dict:
         "budget": budget,
         "platform_recommendation": platform_reco,
         "validation": validation,
+        "claims": claims,
         "duracion_dias": duracion,
         "change_summary": change_summary,
     }

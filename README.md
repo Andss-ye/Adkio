@@ -153,6 +153,7 @@ POST /campaign  (SSE)
    ├─ audience_analyzer       intereses, edades, países, exclusiones
    ├─ platform_recommender    Meta / TikTok / Google Ads (respeta platform_hint)
    ├─ copy_generator          headline + body + CTA en el tono de la marca
+   ├─ claims_validator        claims que Meta rechaza — corre solo, no lo pide el LLM
    └─ campaign_validator      checklist de calidad → warnings / blockers
    └─▶ event: plan_ready      el plan viaja al frontend y el agente se detiene
 
@@ -169,10 +170,16 @@ Las tools viven en `backend/tools/`, una por archivo, con el nombre del archivo:
 | `audience_analyzer` | `intereses`, `edad_min`, `edad_max`, `paises`, `tamano_estimado`, `exclusiones`, `rationale` |
 | `platform_recommender` | `platform` (`meta`\|`tiktok`\|`google_ads`), `rationale` |
 | `copy_generator` | `headline`, `body`, `cta`, `rationale` |
+| `claims_validator` | `passed`, `blockers`, `warnings`, `claims` (`campo`, `texto`, `categoria`, `severidad`, `sugerencia`), `rationale` |
 | `campaign_validator` | `passed`, `warnings`, `blockers`, `checklist_results`, `rationale` |
 | `campaign_launcher` | `campaign_id`, `status`, `platform`, `is_mock`, `estimated_reach`, `preview_url`, `kpis` (leads y CPL estimados, budget diario), `next_steps`, `rationale` |
 | `campaign_remover` | resultado de baja: hard-delete o soft-disable según la plataforma |
 | `report_generator` | markdown con el reporte final |
+
+**`claims_validator` no se le expone al LLM.** Corre siempre, antes de `campaign_validator`, con
+sus propios `tool_start` / `tool_result` en el stream: un guardrail que el modelo puede decidir
+saltarse no es un guardrail. Es determinista (regex + lista negra por vertical), sin llamadas al
+LLM, y sus blockers tumban el checklist final vía la clave `copy_sin_claims_riesgosos`.
 
 **`rationale` no es opcional**: es lo que el panel de razonamiento muestra en vivo mientras el
 agente trabaja, y es el momento fuerte del producto. Sin credenciales conectadas,
@@ -191,7 +198,7 @@ agente trabaja, y es el momento fuerte del producto. Sin credenciales conectadas
 
 El plan que viaja en `plan_ready` es el mismo que `POST /campaign/approve` espera de vuelta en
 `{"plan": ...}`: `brand`, `copy`, `targeting`, `budget`, `platform_recommendation`, `validation`,
-`duracion_dias`. El launcher calcula `budget_usd = presupuesto_diario_calculado × duracion_dias`.
+`claims`, `duracion_dias`. El launcher calcula `budget_usd = presupuesto_diario_calculado × duracion_dias`.
 
 ---
 
