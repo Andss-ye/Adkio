@@ -14,112 +14,124 @@ const docs: Record<string, LegalDoc> = {
   privacidad: {
     title: 'Privacidad',
     subtitle: 'Cómo recopilamos, usamos y protegemos tu información.',
-    updated: 'Última actualización: 10 de mayo de 2026',
+    updated: 'Última actualización: 2 de septiembre de 2026',
     sections: [
       {
         heading: 'Datos que recopilamos',
-        body: 'Recopilamos la información que nos proporcionás al crear tu cuenta (nombre, email, datos de pago) y la información generada al usar el servicio (campañas creadas, prompts ingresados, configuración de tu marca). También recopilamos datos técnicos básicos como dirección IP, tipo de navegador y páginas visitadas para garantizar el funcionamiento del servicio.',
+        body: 'Cuando creas una cuenta pedimos nombre y email. Al usar Adkio guardamos lo que generas en el producto: prompts, planes de campaña, configuración de marca y el historial de campañas asociadas a tu cuenta. Si conectas Meta (u otra plataforma de ads), recibimos tokens de acceso y metadatos de las cuentas publicitarias que autorices (por ejemplo ad account y página). También registramos datos técnicos básicos (IP, navegador, rutas visitadas) para operar y proteger el servicio. Hoy no cobramos dentro de Adkio: no pedimos datos de tarjeta en la app.',
       },
       {
         heading: 'Cómo los usamos',
-        body: 'Usamos tus datos exclusivamente para proveer, mejorar y personalizar el servicio de Adkio. Nunca vendemos tu información a terceros. Los prompts e historial de campañas pueden usarse de forma anonimizada y agregada para mejorar los modelos de generación de audiencias y copy.',
+        body: 'Usamos tus datos para autenticarte, planificar campañas con el agente, crear o actualizar objetos en las plataformas que conectes (con tu aprobación) y mostrarte el estado de esas campañas. No vendemos tu información. Los prompts y resultados pueden usarse de forma agregada o anonimizada para mejorar el producto; no los usamos para anunciarte a terceros.',
       },
       {
-        heading: 'Compartición de datos',
-        body: 'Compartimos datos únicamente con proveedores de infraestructura necesarios para operar el servicio (Supabase para la base de datos, proveedores de cómputo). Todos están sujetos a acuerdos de procesamiento de datos y estándares de seguridad equivalentes a los nuestros. No compartimos información con plataformas de publicidad de terceros.',
+        heading: 'Meta y otras plataformas de ads',
+        body: 'Si conectas Meta, Adkio actúa en tu nombre dentro de los permisos que otorgues (por ejemplo gestión y lectura de anuncios). Enviamos a Meta la información necesaria para crear o consultar campañas, conjuntos y anuncios según el plan que apruebes. Las campañas se crean en estado pausado para que no gasten hasta que tú (o tu equipo) las actives en Meta o, cuando exista, desde Adkio. Puedes desconectar la plataforma desde la app; eso deja de usar el token guardado para nuevas acciones.',
+      },
+      {
+        heading: 'Otros proveedores',
+        body: 'Usamos proveedores de infraestructura para alojar la app y la base de datos (por ejemplo Supabase y el hosting donde corre Adkio) y proveedores de modelos de lenguaje para generar planes y copy. Esos proveedores solo procesan lo necesario para prestar el servicio.',
       },
       {
         heading: 'Retención',
-        body: 'Conservamos tu información mientras tu cuenta esté activa. Al cancelar, eliminamos tus datos personales dentro de los 30 días hábiles siguientes. Algunos datos pueden conservarse por más tiempo cuando lo exija la legislación aplicable (por ejemplo, registros de facturación).',
+        body: 'Conservamos tu información mientras la cuenta esté activa. Si pides el cierre de la cuenta, eliminamos o anonimizamos los datos personales en un plazo razonable, salvo lo que debamos conservar por obligación legal. Los objetos ya creados en Meta siguen bajo tu cuenta de Meta y sus propias políticas.',
       },
       {
         heading: 'Tus derechos',
-        body: 'Tenés derecho a acceder, rectificar, portar y eliminar tus datos personales en cualquier momento. Para ejercer estos derechos, escribinos a privacidad@adkio.co. Respondemos todas las solicitudes dentro de los 30 días corridos.',
+        body: 'Tienes derecho a acceder, rectificar, actualizar o solicitar la eliminación de tus datos personales, conforme a la Ley 1581 de 2012 y normas relacionadas en Colombia. Escríbenos a privacidad@adkio.co; respondemos en los plazos que indique la ley aplicable.',
       },
       {
         heading: 'Contacto',
-        body: 'Para consultas sobre privacidad, escribinos a privacidad@adkio.co. Operamos bajo la legislación colombiana de protección de datos personales (Ley 1581 de 2012).',
+        body: 'Responsable del tratamiento: Adkio, Bogotá, Colombia. Consultas de privacidad: privacidad@adkio.co.',
       },
     ],
   },
   terminos: {
     title: 'Términos de servicio',
-    subtitle: 'Las condiciones bajo las cuales podés usar Adkio.',
-    updated: 'Última actualización: 10 de mayo de 2026',
+    subtitle: 'Las condiciones bajo las cuales puedes usar Adkio.',
+    updated: 'Última actualización: 2 de septiembre de 2026',
     sections: [
       {
         heading: 'Aceptación',
-        body: 'Al crear una cuenta o usar el servicio de Adkio, aceptás estos Términos de Servicio. Si usás Adkio en nombre de una empresa, representás que tenés autoridad para vincular a dicha empresa con estos términos.',
+        body: 'Al crear una cuenta o usar Adkio aceptas estos términos. Si usas el servicio en nombre de una empresa, declaras que tienes autoridad para obligarla.',
       },
       {
-        heading: 'Uso del servicio',
-        body: 'Podés usar Adkio exclusivamente para crear y gestionar campañas de publicidad paga en las plataformas soportadas. No está permitido generar contenido ilegal, engañoso o que infrinja los términos de Meta o cualquier otra plataforma integrada. Nos reservamos el derecho de suspender cuentas que violen estos términos.',
+        heading: 'Qué es Adkio',
+        body: 'Adkio es una herramienta en evolución (beta) que ayuda a planificar y lanzar campañas de publicidad paga desde lenguaje natural, con aprobación humana antes de publicar. El producto puede cambiar; nuevas funciones no alteran estos términos hasta que actualicemos esta página.',
       },
       {
-        heading: 'Cuentas y acceso',
-        body: 'Sos responsable de mantener la confidencialidad de tus credenciales. Si detectás acceso no autorizado, notificanos de inmediato a seguridad@adkio.co. Una cuenta no puede compartirse entre personas sin un plan multi-usuario activo.',
+        heading: 'Uso permitido',
+        body: 'Puedes usar Adkio para crear y gestionar campañas en las plataformas que conectes (hoy el foco es Meta; otras pueden estar en prueba o no disponibles). Está prohibido el contenido ilegal, engañoso o que viole las políticas de Meta u otras plataformas. Podemos suspender cuentas que incumplan estos términos o abusen del servicio.',
       },
       {
-        heading: 'Pagos y suscripción',
-        body: 'Las suscripciones se cobran mensual o anualmente según el plan elegido. Los precios pueden cambiar con un aviso previo de 30 días. No realizamos reembolsos parciales por períodos no utilizados, salvo cuando la ley aplicable lo exija.',
+        heading: 'Cuentas, credenciales y plataformas',
+        body: 'Eres responsable de tu cuenta Adkio y de las credenciales de las plataformas que conectes. No compartas tokens ni contraseñas. El gasto publicitario ocurre en tu cuenta de Meta (u otra plataforma), bajo sus condiciones de pago; Adkio no es el medio de cobro de ese gasto. Si detectas acceso no autorizado, avísanos a seguridad@adkio.co.',
+      },
+      {
+        heading: 'Aprobación humana y campañas en pausa',
+        body: 'El plan de campaña no se publica solo: requiere tu aprobación explícita. Las campañas creadas desde Adkio quedan en pausa para que revises antes de gastar. Activar el gasto es tu responsabilidad (en la plataforma de ads o, cuando exista, con una acción explícita en Adkio).',
+      },
+      {
+        heading: 'Planes y cobros de Adkio',
+        body: 'Hoy el acceso puede ser demo, invitación o prueba sin cobro dentro de la app. Si en el futuro ofrecemos planes de pago, publicaremos precios y condiciones antes de cobrar y te pediremos aceptación. El presupuesto que defines para anuncios es independiente de cualquier plan de Adkio.',
       },
       {
         heading: 'Propiedad intelectual',
-        body: 'Adkio y su tecnología son propiedad de Adkio, Inc. El contenido generado por el agente (copy, audiencias, configuraciones de campaña) es de tu propiedad. Nos otorgás una licencia limitada para usar dicho contenido con el único fin de prestar el servicio.',
+        body: 'Adkio y su software son propiedad de Adkio. El copy, audiencias y configuraciones que generes con el agente son tuyos. Nos das una licencia limitada para usar ese contenido solo para prestar y mejorar el servicio.',
       },
       {
         heading: 'Limitación de responsabilidad',
-        body: 'El servicio se provee "tal como está". No garantizamos resultados específicos en campañas de publicidad. En ningún caso nuestra responsabilidad superará el monto pagado en los últimos 12 meses por el servicio.',
+        body: 'El servicio se ofrece “tal como está”, en beta. No garantizamos resultados de campaña, aprobación de anuncios por Meta ni disponibilidad continua. En la medida que permita la ley, la responsabilidad de Adkio por el uso del servicio se limita a los daños directos demostrables y, si hubieras pagado a Adkio por el servicio, al monto efectivamente pagado en los últimos 12 meses.',
       },
     ],
   },
   seguridad: {
     title: 'Seguridad',
     subtitle: 'Cómo protegemos tu cuenta, tus datos y tus campañas.',
-    updated: 'Última actualización: 10 de mayo de 2026',
+    updated: 'Última actualización: 2 de septiembre de 2026',
     sections: [
       {
         heading: 'Infraestructura',
-        body: 'Adkio opera sobre infraestructura en la nube con certificación SOC 2. Los datos se almacenan en regiones de Norteamérica y Europa, con replicación automática y backups diarios. Toda la infraestructura se revisa y actualiza de forma continua.',
+        body: 'Adkio corre sobre proveedores de nube estándar del mercado (hosting de la API y frontend, y base de datos gestionada). Aplicamos actualizaciones y buenas prácticas de endurecimiento según evoluciona el producto. Esta página describe medidas reales del sistema; no afirma certificaciones que aún no tenemos.',
       },
       {
-        heading: 'Cifrado de datos',
-        body: 'Toda la comunicación entre tu navegador y nuestros servidores está cifrada con TLS 1.3. Los datos en reposo se cifran con AES-256. Las credenciales de terceros (tokens de Meta, claves de API) se almacenan usando cifrado de sobre con rotación periódica de claves.',
+        heading: 'Cifrado y secretos',
+        body: 'El tráfico entre tu navegador y nuestros servidores va por HTTPS/TLS. Los tokens de plataformas (por ejemplo Meta) se guardan cifrados en base de datos y no se exponen en logs ni en mensajes de error al usuario. Las contraseñas de cuenta se almacenan con hash (no en texto plano).',
       },
       {
         heading: 'Control de acceso',
-        body: 'Implementamos sesiones con tiempo de expiración y acceso con mínimo privilegio. El acceso interno a datos de producción está restringido por roles y requiere aprobación de dos personas. Todos los accesos a producción quedan auditados.',
+        body: 'Las sesiones usan tokens con expiración. En modo multitenant, cada cuenta solo ve sus propias conexiones y campañas. El acceso del equipo de Adkio a producción se limita a lo necesario para operar el servicio.',
       },
       {
-        heading: 'Respuesta a incidentes',
-        body: 'Contamos con un plan de respuesta a incidentes que incluye clasificación, contención, erradicación y comunicación. En caso de una brecha que afecte tus datos, te notificamos dentro de las 72 horas de haberla confirmado, en cumplimiento con la legislación aplicable.',
+        heading: 'Incidentes',
+        body: 'Si confirmamos un incidente que afecte tus datos personales, te avisaremos por los medios de contacto que tengamos y tomaremos medidas razonables de contención. Para reportar un problema de seguridad: seguridad@adkio.co.',
       },
       {
         heading: 'Reporte de vulnerabilidades',
-        body: 'Si descubrís una vulnerabilidad en Adkio, escribinos de inmediato a seguridad@adkio.co. Respondemos todos los reportes de buena fe dentro de las 48 horas hábiles y trabajamos con vos para resolver el problema de forma responsable antes de cualquier divulgación pública.',
+        body: 'Si encuentras una vulnerabilidad, escríbenos a seguridad@adkio.co con detalle suficiente para reproducirla. Atenderemos reportes de buena fe y pedimos no divulgar en público hasta que coordinemos una ventana razonable de corrección.',
       },
     ],
   },
   cookies: {
     title: 'Cookies',
-    subtitle: 'Qué cookies usamos y cómo podés controlarlas.',
-    updated: 'Última actualización: 10 de mayo de 2026',
+    subtitle: 'Qué cookies usamos y cómo puedes controlarlas.',
+    updated: 'Última actualización: 2 de septiembre de 2026',
     sections: [
       {
         heading: '¿Qué son las cookies?',
-        body: 'Las cookies son pequeños archivos de texto que los sitios web almacenan en tu navegador. Permiten recordar preferencias, mantener sesiones activas y entender cómo se usa el servicio.',
+        body: 'Las cookies (y almacenamiento similar del navegador) son datos que el sitio guarda en tu dispositivo para mantener la sesión y preferencias básicas.',
       },
       {
-        heading: 'Cookies que usamos',
-        body: 'Usamos cookies estrictamente necesarias para el funcionamiento de la sesión y la autenticación. También usamos cookies de análisis propias (sin terceros publicitarios) para medir qué funcionalidades se usan más. No usamos cookies de publicidad comportamental.',
+        heading: 'Qué usamos',
+        body: 'Usamos almacenamiento necesario para autenticación y sesión (por ejemplo el token de acceso en el navegador). No usamos cookies de publicidad comportamental de terceros. Si agregamos analítica no esencial, lo declararemos aquí.',
       },
       {
-        heading: 'Control de cookies',
-        body: 'Podés configurar tu navegador para rechazar cookies, aunque esto puede afectar el inicio de sesión. En la Unión Europea y países con leyes equivalentes, te pedimos consentimiento explícito antes de instalar cualquier cookie no esencial.',
+        heading: 'Control',
+        body: 'Puedes borrar datos del sitio desde tu navegador; eso puede cerrar tu sesión. No dependemos de un muro de cookies de marketing para usar el producto.',
       },
       {
         heading: 'Actualizaciones',
-        body: 'Esta política puede actualizarse cuando cambie nuestra forma de usar cookies. Publicamos los cambios en esta página y, si son significativos, te notificamos por email. La fecha de última actualización aparece siempre al inicio del documento.',
+        body: 'Si cambia cómo usamos cookies o almacenamiento local, actualizamos esta página y la fecha al inicio del documento.',
       },
     ],
   },
@@ -183,7 +195,7 @@ export default function LegalPage({ slug }: { slug: Slug }) {
 
           {/* Footer note */}
           <div className="mt-20 pt-8 border-t border-white/10 text-xs text-white/25">
-            Adkio, Inc. · Bogotá, Colombia · legal@adkio.co
+            Adkio · Bogotá, Colombia · legal@adkio.co
           </div>
         </main>
         <Footer />
