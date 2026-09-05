@@ -73,3 +73,64 @@ def make_tool_call_response(tool_name: str, args: dict) -> MagicMock:
 def make_json_response(data: dict) -> MagicMock:
     """Simulates an LLM response that returns a JSON payload (used by tools)."""
     return make_text_response(json.dumps(data, ensure_ascii=False))
+
+
+# ── Supabase double ────────────────────────────────────────────────────────
+
+class _FakeResult:
+    def __init__(self, data):
+        self.data = data
+
+
+class FakeSupabase:
+    """Doble del cliente supabase-py: registra cada cadena y devuelve lo pactado.
+
+    `responses` es una cola — una entrada por `execute()`, en orden. Si se agota
+    (o no se pasó) devuelve `rows`. Una entrada que sea una excepción se lanza,
+    que es como se simula una tabla que no existe.
+    """
+
+    def __init__(self, rows=None, responses=None):
+        self.rows = rows if rows is not None else []
+        self.responses = list(responses) if responses is not None else None
+        self.calls = []
+        self._current = None
+
+    def table(self, name):
+        self._current = {"table": name, "op": None, "payload": None,
+                         "on_conflict": None, "filters": []}
+        return self
+
+    def select(self, *fields):
+        self._current["op"] = "select"
+        self._current["fields"] = fields
+        return self
+
+    def upsert(self, payload, on_conflict=None):
+        self._current.update(op="upsert", payload=payload, on_conflict=on_conflict)
+        return self
+
+    def update(self, payload):
+        self._current.update(op="update", payload=payload)
+        return self
+
+    def delete(self):
+        self._current["op"] = "delete"
+        return self
+
+    def eq(self, col, val):
+        self._current["filters"].append((col, val))
+        return self
+
+    def limit(self, n):
+        self._current["limit"] = n
+        return self
+
+    def execute(self):
+        self.calls.append(self._current)
+        if self.responses:
+            nxt = self.responses.pop(0)
+            if isinstance(nxt, Exception):
+                raise nxt
+            return _FakeResult(nxt)
+        return _FakeResult(self.rows)

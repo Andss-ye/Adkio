@@ -1,20 +1,96 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  Adkio — agente de IA que planifica y lanza campañas en Meta, TikTok y Google Ads desde
+  lenguaje natural, con aprobación humana obligatoria antes de publicar. Prototipo avanzado /
+  beta cerrada. Vertical inicial: educación ejecutiva en LATAM.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  Stack: Python 3.11 + FastAPI (SSE para el streaming del agente) · litellm como único wrapper
+  del LLM · Vite + React 18 + TypeScript + Tailwind (SPA sin router) · Supabase (Postgres) ·
+  auth propia con JWT HS256 (no Supabase Auth) · deploy en Railway.
+
+  Idioma: todos los artefactos se escriben en español. Los identificadores de código van en
+  inglés, salvo los campos de dominio que ya existen en la DB y en las tools, que están en
+  español (negocio_nombre, monto_usd, rationale).
+
+  Bases del proyecto que ninguna propuesta puede romper (detalle en docs/CODESTYLE.md):
+  - Human-in-the-loop es estructural: el stream de POST /campaign termina en plan_ready y el
+    lanzamiento vive en POST /campaign/approve. Toda campaña se crea en estado PAUSED.
+  - Las tools y los adapters nunca leen env ni DB: las credenciales llegan por parámetro desde
+    el credential_resolver, que es el único módulo que sabe de dónde salen.
+  - Toda tool del agente devuelve un campo `rationale` y nunca rompe el stream: si algo falla,
+    degrada a un default y lo explica en el rationale.
+  - El LLM se configura solo en backend/llm.py (env var LLM_MODEL). Nadie más instancia un
+    cliente de proveedor.
+  - Un problema recurrente tiene una sola forma de resolverse: tool = función plana que
+    devuelve dict; interfaz entre capas = Protocol; datos que cruzan frontera = dataclass
+    frozen; estado del frontend = props + hooks (no Redux ni Context global); navegación =
+    switch en App.tsx (no react-router).
+  - Las llamadas del frontend al backend pasan siempre por lib/api.ts.
+  - Migraciones SQL numeradas e idempotentes en backend/db/migrations/, reflejadas en
+    schema.sql. Ojo: las columnas de `campaigns` que no estén en _CAMPAIGN_FIELDS
+    (backend/db/supabase_client.py) se descartan en silencio al insertar.
+
+  Antes de proponer algo, verificá en docs/STATUS.md si ya existe o si está bloqueado por un
+  tercero (App Review de Meta / TikTok / Google Ads). Referencia técnica: README.md.
+
+rules:
+  proposal:
+    - >-
+      Escribí el problema desde el usuario, no desde la solución técnica.
+    - >-
+      Incluí las historias de usuario en formato "Como <rol>, quiero <acción> para
+      <beneficio>", con el rol tomado de los que existen de verdad — marketer que gestiona su
+      propia cuenta, agencia con varios clientes, dev del equipo, o admin de Adkio.
+    - >-
+      Cada historia lleva criterios de aceptación verificables en formato Dado / Cuando /
+      Entonces. Si no se puede verificar, no es un criterio.
+    - >-
+      Incluí siempre una sección "Fuera de alcance" para acotar la propuesta.
+    - >-
+      Declará si la propuesta necesita credenciales reales de una plataforma o si funciona con
+      el fallback a mock (is_mock=true).
+  specs:
+    - >-
+      Describí comportamiento observable, no implementación.
+    - >-
+      Si el cambio toca el flujo de campaña, explicitá qué pasa antes y qué pasa después de la
+      aprobación humana.
+    - >-
+      Si el cambio agrega o modifica una tool, documentá su contrato completo, incluido el
+      rationale, y el comportamiento cuando el LLM o el proveedor falla.
+  design:
+    - >-
+      Indicá en qué capa cae cada pieza — tools, credential_resolver, adapters, endpoints,
+      frontend, o migración de DB.
+    - >-
+      Si el diseño necesita un patrón que no está en la tabla de docs/CODESTYLE.md sección
+      2.1, decilo explícitamente y justificalo: pasa a ser el patrón para todo el repo.
+    - >-
+      Señalá el impacto en el estado en memoria del proceso (_campaigns, _conversations, rate
+      limiter), que hoy impide correr más de una réplica.
+  tasks:
+    - >-
+      Ordená las tareas para que el repo quede funcionando después de cada una.
+    - >-
+      Incluí las tareas de test: sin red ni credenciales reales, adapters con dobles y resolver
+      con un dict de entorno inyectado.
+    - >-
+      Si el cambio toca un contrato, una tabla o una env var, agregá la tarea de actualizar
+      README.md y .env.example en el mismo PR.
+
+operations:
+  apply:
+    guidance:
+      - >-
+        Corré pytest desde la raíz del repo antes de cerrar. Requiere Python 3.11+.
+      - >-
+        Si tocaste el frontend, npm run build (tsc -b) tiene que pasar limpio: es el único
+        gate automático del proyecto.
+      - >-
+        Commits en conventional commits con scope y descripción en español.
+  archive:
+    guidance:
+      - >-
+        Actualizá docs/STATUS.md si el cambio movió algo de "no existe" a "funciona" o si
+        resolvió una deuda técnica de la sección 6.

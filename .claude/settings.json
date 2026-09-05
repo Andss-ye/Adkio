@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "includeCoAuthoredBy": false,
+  "extraKnownMarketplaces": {
+    "adkio": {
+      "source": {
+        "source": "github",
+        "repo": "Andss-ye/Adkio"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "adkio-workflow@adkio": true
+  }
+}

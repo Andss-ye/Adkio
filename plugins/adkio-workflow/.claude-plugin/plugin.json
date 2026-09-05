@@ -1,0 +1,9 @@
+{
+  "name": "adkio-workflow",
+  "version": "1.0.0",
+  "description": "Reglas, guardrails y comandos del repo Adkio. Bloquea atribución a Claude en commits y PRs, verifica las bases arquitectónicas del proyecto en cada edición, inyecta el estado del repo al arrancar la sesión, y automatiza checkpoints con el formato de summary del equipo.",
+  "author": {
+    "name": "Equipo Adkio",
+    "url": "https://github.com/Andss-ye/Adkio"
+  }
+}

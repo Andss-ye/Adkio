@@ -23,6 +23,8 @@ API y qué hay en la base de datos.
 | [`docs/COMPETITIVE_BRIEF.md`](docs/COMPETITIVE_BRIEF.md) | Panorama competitivo y posicionamiento |
 | [`docs/adr/`](docs/adr/) | Decisiones de arquitectura registradas |
 | [`CLAUDE.md`](CLAUDE.md) | Contexto operativo para agentes de código |
+| `openspec/` | Historias de usuario y propuestas de cambio — ver [Flujo de trabajo](#flujo-de-trabajo) |
+| [`plugins/adkio-workflow/`](plugins/adkio-workflow/README.md) | Plugin de Claude Code del equipo: guardrails, comandos de checkpoint y PR |
 
 ---
 
@@ -99,6 +101,57 @@ pytest -k "resolver" -v                  # por patrón
 
 `pytest.ini` fija `asyncio_mode = auto`: las corrutinas se testean sin decorador.
 `scripts/*.py` son smoke tests **manuales** contra APIs reales — pytest no los corre.
+
+---
+
+## Flujo de trabajo
+
+Las historias de usuario y las propuestas de cambio se manejan con
+[OpenSpec](https://github.com/Fission-AI/OpenSpec), instalado como devDependency en la raíz.
+Un cambio pasa por cuatro artefactos: `proposal.md` (el problema y las historias) →
+`specs/<capability>/spec.md` (comportamiento esperado) → `design.md` (cómo) → `tasks.md` (pasos).
+
+```bash
+npm install                # instala el CLI (raíz; el frontend tiene su propio package.json)
+npm run spec:list          # changes activos
+npm run spec:dashboard     # dashboard interactivo de specs y changes
+npm run spec:validate      # valida artefactos
+```
+
+Desde Claude Code: `/opsx:propose "<idea>"` genera los cuatro artefactos, `/opsx:apply` implementa un
+change aprobado, `/opsx:archive` lo cierra. Proponer e implementar están separados a propósito:
+proponer no toca código.
+
+`openspec/config.yaml` lleva el contexto del proyecto y las reglas por artefacto (historias en
+formato "Como… quiero… para…" con criterios Dado/Cuando/Entonces, y las bases que ninguna propuesta
+puede romper). Si cambian las bases, actualizá ese archivo junto con
+[`docs/CODESTYLE.md`](docs/CODESTYLE.md).
+
+> OpenSpec envía estadísticas de uso anónimas por default. Para desactivarlo:
+> `OPENSPEC_TELEMETRY=0` o `npx openspec config set telemetry.enabled false` (config global de la
+> máquina, no del repo).
+
+### Guardrails y checkpoints
+
+El repo trae un plugin de Claude Code ([`plugins/adkio-workflow/`](plugins/adkio-workflow/README.md))
+que aplica las reglas del proyecto de forma automática y cierra cada bloque de trabajo con
+verificación. Instalación desde un clon:
+
+```bash
+claude plugin marketplace add ./
+claude plugin install adkio-workflow@adkio
+```
+
+Da cinco comandos (`/adkio:checkpoint`, `/adkio:verify`, `/adkio:summary`, `/adkio:pr`,
+`/adkio:bases`) y cuatro hooks que corren solos: bloquean commits con atribución a Claude,
+avisan cuando una edición rompe una base arquitectónica, e inyectan el estado del repo al
+arrancar la sesión.
+
+El gauntlet de verificación se puede correr suelto, sin Claude Code:
+
+```bash
+bash plugins/adkio-workflow/scripts/verify.sh
+```
 
 ---
 
@@ -255,6 +308,8 @@ Request de `POST /campaign`:
 | `GET` | `/connect/{platform}` | Bearer | Devuelve `authorize_url` para iniciar OAuth |
 | `GET` | `/connect/{platform}/callback` | **público** | Callback del provider → redirige al frontend |
 | `POST` | `/connect/{platform}/manual` | Bearer | Alta pegando access token — **el camino que funciona hoy** |
+| `GET` | `/connect/{platform}/assets` | Bearer | Ad accounts, páginas e IG que alcanza la conexión (`?asset_type=` filtra) |
+| `POST` | `/connect/{platform}/assets/select` | Bearer | Elige con qué asset se publica — `{asset_type, external_id}` |
 | `POST` | `/connect/google_ads/customer` | Bearer | Setea el `customer_id` de Google Ads |
 | `DELETE` | `/connect/{platform}` | Bearer | Desconecta la plataforma |
 
@@ -331,7 +386,8 @@ que haya que tocarlo.
 |---|---|
 | `brand_configs` | Una fila por marca. `slug` es el lookup amigable (`demo-edu-latam`); `get_brand_config` acepta slug o UUID. Campos de negocio en español, arrays `TEXT[]` para roles/países/intereses/tono, `metadata` JSONB para lo inferido en onboarding |
 | `accounts` | `email` UNIQUE, `password_hash` bcrypt, `plan` (`starter`\|`growth`\|`scale`, **cosmético**: no hay billing), `brand_id` → `brand_configs` |
-| `platform_connections` | Tokens cifrados con Fernet. `UNIQUE (adkio_account_id, platform)` → una cuenta conecta como máximo 1 ad account por plataforma. `extra_jsonb` es donde vive `META_PAGE_ID` |
+| `platform_connections` | Tokens cifrados con Fernet. `UNIQUE (adkio_account_id, platform)` → una cuenta conecta una credencial por plataforma; los assets que esa credencial alcanza viven en `platform_assets` |
+| `platform_assets` | Los ad accounts, páginas y cuentas de Instagram que alcanza una conexión, una fila cada uno. `is_selected` marca el que usa el launcher, con un índice único parcial que impide dos elegidos del mismo `asset_type` |
 | `campaigns` | Historial de campañas lanzadas. **No está en `schema.sql`** |
 | `campaign_metrics` | Métricas diarias por `(account_id, platform, campaign_id, metric_date)`. `account_id` obligatorio. `clicks` puede quedar en 0 hasta la ingesta (ADK-16). Sin FK a `campaigns` |
 | `whitelist` | Altas del webhook de Tally, upsert por `email` |
@@ -355,6 +411,9 @@ escritura HTTP pública — solo helpers Python. `clicks` se llena con la ingest
 | `004_campaign_soft_delete.sql` | `campaigns.deleted_at` |
 | `005_account_brand.sql` | `accounts.brand_id` → una marca por cuenta |
 | `006_campaign_metrics.sql` | Tabla `campaign_metrics` (grano diario, UNIQUE por tenant+plataforma+campaña+fecha) |
+| `007_platform_assets.sql` | `platform_assets` + backfill desde `extra_jsonb` de las conexiones existentes |
+
+Cambiar el asset elegido se hace en **una sola sentencia** (`SET is_selected = (external_id = '<nuevo>')`) o dentro de una transacción que primero apague el anterior: el índice único parcial rechaza dos elegidos del mismo tipo.
 
 ---
 
@@ -408,7 +467,8 @@ Railway Variables, nunca en la imagen.
 ### Credenciales de plataforma (single-tenant, leídas por `EnvCredentialResolver`)
 
 - **Meta**: `META_APP_ID`, `META_APP_SECRET`, `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID` (`act_…`),
-  `META_PAGE_ID`, `META_USE_SANDBOX`
+  `META_PAGE_ID`, `META_USE_SANDBOX`, `META_GRAPH_API_VERSION` (default `v25.0`; cada versión de
+  Graph vence ~2 años después de su release)
 - **TikTok**: `TIKTOK_ACCESS_TOKEN`, `TIKTOK_ADVERTISER_ID`, `TIKTOK_APP_ID`, `TIKTOK_APP_SECRET`,
   `TIKTOK_USE_SANDBOX`
 - **Google Ads**: `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CLIENT_ID`,

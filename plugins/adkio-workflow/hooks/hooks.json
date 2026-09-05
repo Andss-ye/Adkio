@@ -1,0 +1,51 @@
+{
+  "description": "Guardrails del repo Adkio: bloquea atribución a Claude en commits/PRs (PreToolUse), verifica las bases arquitectónicas después de cada edición (PostToolUse), inyecta bases + estado del repo al arrancar (SessionStart), y recuerda commitear al cerrar el turno (Stop). Todos los hooks son no-op fuera del repo Adkio.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/session_context.py\"",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/no_claude_attribution.py\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/bases_guard.py\"",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/checkpoint_reminder.py\"",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}

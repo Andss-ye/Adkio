@@ -18,6 +18,57 @@ con aprobación humana obligatoria antes de publicar. Prototipo avanzado / beta 
 Si cambiás un contrato — firma de tool, tabla, evento SSE, env var — actualizá `README.md` y
 `.env.example` en el mismo PR.
 
+## Plugin del equipo: adkio-workflow
+
+El repo trae un plugin de Claude Code en `plugins/adkio-workflow/` que aplica las reglas
+solo. Documentación completa en `plugins/adkio-workflow/README.md`.
+
+| Comando | Qué hace |
+|---|---|
+| `/adkio:checkpoint` | Verifica, audita contra las bases y commitea con el summary del equipo |
+| `/adkio:verify` | Gauntlet: tests, build del frontend, higiene, atribución |
+| `/adkio:summary` | Genera el summary sin commitear |
+| `/adkio:pr` | Abre el PR con ese summary como body |
+| `/adkio:bases` | Audita un diff contra las bases arquitectónicas |
+
+Cuatro hooks corren solos: **bloquean** cualquier commit o PR que atribuya autoría a
+Claude, avisan cuando una edición rompe una base del proyecto, inyectan el estado del repo
+al arrancar, y recuerdan commitear al cerrar el turno.
+
+**Commits y PRs sin atribución a Claude.** Ni `Co-Authored-By`, ni footer de herramienta,
+ni `🤖`. El autor es la persona que pidió el trabajo. `includeCoAuthoredBy: false` está en
+`.claude/settings.json` y el hook de PreToolUse bloquea el commit si aparece igual.
+
+## Historias de usuario y cambios: OpenSpec
+
+Las historias de usuario y las propuestas de cambio se manejan con
+[OpenSpec](https://github.com/Fission-AI/OpenSpec) (`@fission-ai/openspec`, devDependency en la raíz).
+Los comandos viven en `.claude/commands/opsx/`:
+
+| Comando | Para qué |
+|---|---|
+| `/opsx:propose "<idea>"` | Crea el change y genera proposal + specs + design + tasks |
+| `/opsx:explore` | Explora el espacio del problema antes de proponer |
+| `/opsx:apply` | Implementa un change ya aprobado |
+| `/opsx:update` | Ajusta los artefactos de un change en curso |
+| `/opsx:sync` | Sincroniza los specs principales |
+| `/opsx:archive` | Archiva un change terminado y actualiza los specs |
+
+```bash
+npm run spec:list         # changes activos
+npm run spec:dashboard    # dashboard interactivo de specs y changes
+npm run spec:validate     # valida artefactos
+```
+
+**`propose` y `apply` están separados a propósito**: proponer genera solo artefactos de
+planificación y se detiene — no toca código del proyecto, incluso si el pedido dice "construí esto".
+Implementar requiere un pedido nuevo y explícito.
+
+`openspec/config.yaml` lleva el contexto de Adkio y las reglas por artefacto (historias en formato
+"Como… quiero… para…" con criterios Dado/Cuando/Entonces, secciones de fuera de alcance, en qué capa
+cae cada pieza). Se le inyecta a la IA en cada generación: si cambian las bases del proyecto,
+actualizá ese archivo también.
+
 ## Comandos
 
 ```bash
