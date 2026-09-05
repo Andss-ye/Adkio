@@ -6,6 +6,7 @@ import ConnectionCard, {
   type Connection,
   PLATFORM_META,
 } from '@/components/settings/ConnectionCard';
+import MetaAdAccountList from '@/components/settings/MetaAdAccountList';
 import { Check } from '@/components/ui/Icons';
 
 type Props = {
@@ -263,6 +264,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
                       onConnect={() => connect(platform)}
                       onDisconnect={() => disconnect(platform)}
                     />
+                    {platform === 'meta' && <MetaAdAccountList />}
                     {!byPlatform(platform) && (
                       <button
                         onClick={() => setManualOpen(manualOpen === platform ? null : platform)}
