@@ -264,7 +264,7 @@ export default function SettingsDrawer({ open, onClose }: Props) {
                       onConnect={() => connect(platform)}
                       onDisconnect={() => disconnect(platform)}
                     />
-                    {platform === 'meta' && <MetaAdAccountList />}
+                    {platform === 'meta' && byPlatform('meta') && <MetaAdAccountList />}
                     {!byPlatform(platform) && (
                       <button
                         onClick={() => setManualOpen(manualOpen === platform ? null : platform)}

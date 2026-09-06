@@ -76,15 +76,13 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
 
 export { BACKEND };
 
-// ── Meta ad accounts (ADK-23) ──────────────────────────────────────────────
+// ── Meta ad accounts (ADK-23 / ADK-14) ──────────────────────────────────────
 //
-// Shape aligned to Andrew's ADK-7 `platform_assets` (ad_account only):
-//   external_id · name · is_selected
-//
-// ADK-14 (Freddy) is still Backlog / blocked by ADK-7 — there is no list/select
-// endpoint in this tree. These helpers MUST NOT invent URLs. When ADK-14 lands
-// in main, swap the bodies to apiFetch against the real routes and drop the
-// localStorage mock. Page / Instagram are out of ADK-23 (pending refactor).
+// Cablea el picker de Settings a `backend/api/connections.py`
+// (GET/POST /connect/{platform}/assets), que lee y escribe la tabla
+// `platform_assets` (migración 009, ADK-14). `external_id`/`name`/`is_selected`
+// son el subconjunto que necesita esta lista; el backend también manda
+// `asset_type` y `parent_external_id` (para page/instagram, fuera de ADK-23).
 
 export type MetaAdAccount = {
   external_id: string;
@@ -92,40 +90,18 @@ export type MetaAdAccount = {
   is_selected: boolean;
 };
 
-const MOCK_SELECTED_KEY = "adkio.mock.meta.ad_account_id";
-
-/** PYME with 3 ad accounts — the ADK-23 mock case. */
-const MOCK_META_AD_ACCOUNTS: ReadonlyArray<Omit<MetaAdAccount, "is_selected">> = [
-  { external_id: "act_269458954399128", name: "Los Andes Café — Principal" },
-  { external_id: "act_184729301847562", name: "Los Andes Café — Agencia 2024" },
-  { external_id: "act_391028475610293", name: "Los Andes Café — Retargeting" },
-];
-
-function mockDelay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function storedSelectedId(): string {
-  const stored = localStorage.getItem(MOCK_SELECTED_KEY);
-  if (stored && MOCK_META_AD_ACCOUNTS.some((a) => a.external_id === stored)) {
-    return stored;
-  }
-  return MOCK_META_AD_ACCOUNTS[0].external_id;
-}
-
 export async function listMetaAdAccounts(): Promise<MetaAdAccount[]> {
-  await mockDelay(350);
-  const selectedId = storedSelectedId();
-  return MOCK_META_AD_ACCOUNTS.map((account) => ({
-    ...account,
-    is_selected: account.external_id === selectedId,
-  }));
+  const r = await apiFetch("/connect/meta/assets?asset_type=ad_account");
+  if (!r.ok) throw new Error(await parseErrorResponse(r));
+  const data = (await r.json()) as { assets: MetaAdAccount[] };
+  return data.assets;
 }
 
 export async function selectMetaAdAccount(externalId: string): Promise<void> {
-  await mockDelay(120);
-  if (!MOCK_META_AD_ACCOUNTS.some((a) => a.external_id === externalId)) {
-    throw new Error("Esa ad account no está en la lista.");
-  }
-  localStorage.setItem(MOCK_SELECTED_KEY, externalId);
+  const r = await apiFetch("/connect/meta/assets/select", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ asset_type: "ad_account", external_id: externalId }),
+  });
+  if (!r.ok) throw new Error(await parseErrorResponse(r));
 }
