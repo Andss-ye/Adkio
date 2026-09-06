@@ -15,6 +15,7 @@ Diseño:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Optional, Protocol, runtime_checkable
 
 
@@ -74,7 +75,9 @@ class CampaignStatus:
     reach: int = 0
     impressions: int = 0
     spend: float = 0.0
+    clicks: int = 0
     error: Optional[str] = None
+    metric_date: Optional[date] = None
     raw: dict = field(default_factory=dict)
 
 
@@ -109,7 +112,9 @@ class PlatformAdapter(Protocol):
     def delete_campaign(self, credentials, campaign_id: str) -> DeleteResult:
         ...
 
-    def get_campaign(self, credentials, campaign_id: str) -> CampaignStatus:
+    def get_campaign(
+        self, credentials, campaign_id: str, metric_date: Optional[date] = None
+    ) -> CampaignStatus:
         ...
 
 

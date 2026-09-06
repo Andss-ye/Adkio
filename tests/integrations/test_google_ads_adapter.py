@@ -3,6 +3,7 @@ Tests del GoogleAdsAdapter — client inyectado, cero red ni gRPC.
 """
 from __future__ import annotations
 
+from datetime import date
 from unittest.mock import MagicMock
 
 import pytest
@@ -172,3 +173,14 @@ def test_get_campaign_handles_empty_result(valid_creds):
     status = adapter.get_campaign(valid_creds, "999")
     assert status.status == "UNKNOWN"
     assert status.error == "campaign not found"
+
+
+def test_get_campaign_acepta_metric_date_sin_fallar(valid_creds):
+    client, _, _, ga_service = _make_fake_client()
+    ga_service.search.return_value = iter([])
+    adapter = GoogleAdsAdapter(client=client)
+    status = adapter.get_campaign(
+        valid_creds, "999", metric_date=date(2026, 9, 5)
+    )
+    assert status.status == "UNKNOWN"
+    assert status.clicks == 0

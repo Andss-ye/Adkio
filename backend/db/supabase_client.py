@@ -157,6 +157,43 @@ def list_campaigns(
         return _build(False).execute().data or []
 
 
+# Paginación propia: list_campaigns recorta a 50 y filtra por tenant.
+_INGESTIBLE_PAGE_SIZE = 200
+
+
+def list_ingestible_campaigns(*, page_size: int = _INGESTIBLE_PAGE_SIZE) -> list[dict]:
+    """Campañas Meta reales, cross-tenant, para el job de ingesta.
+
+    Filtros: platform=meta, is_mock=false, account_id NOT NULL, deleted_at IS NULL.
+    No reusa `list_campaigns`.
+    """
+    if page_size < 1:
+        page_size = 1
+
+    client = _get_client()
+    rows: list[dict] = []
+    offset = 0
+    while True:
+        page = (
+            client.table("campaigns")
+            .select("*")
+            .order("created_at", desc=True)
+            .range(offset, offset + page_size - 1)
+            .eq("platform", "meta")
+            .eq("is_mock", False)
+            .is_("deleted_at", "null")
+            .not_.is_("account_id", "null")
+            .execute()
+            .data
+            or []
+        )
+        rows.extend(page)
+        if len(page) < page_size:
+            break
+        offset += page_size
+    return rows
+
+
 def delete_campaign(campaign_id: str) -> bool:
     """Soft-delete: marca `deleted_at` por UUID de Supabase o por campaign_id.
 

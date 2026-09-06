@@ -20,6 +20,8 @@ class FakeQuery:
         self.filters = []
         self.order_by = None
         self.limit_n = None
+        self.range_args = None
+        self.range_calls = []
 
     def table(self, name):
         self.table_name = name
@@ -51,6 +53,26 @@ class FakeQuery:
 
     def limit(self, n):
         self.limit_n = n
+        return self
+
+    def is_(self, col, val):
+        self.filters.append(("is", col, val))
+        return self
+
+    @property
+    def not_(self):
+        query = self
+
+        class _Not:
+            def is_(self, col, val):
+                query.filters.append(("not.is", col, val))
+                return query
+
+        return _Not()
+
+    def range(self, start, end):
+        self.range_args = (start, end)
+        self.range_calls.append((start, end))
         return self
 
     def execute(self):
@@ -119,3 +141,47 @@ class TestListCampaignMetrics:
             )
         assert ("gte", "metric_date", "2026-08-01") in q.filters
         assert ("lte", "metric_date", "2026-08-15") in q.filters
+
+
+class _PagingQuery(FakeQuery):
+    """Devuelve una página distinta en cada execute() para probar el walker."""
+
+    def __init__(self, pages):
+        super().__init__(rows=[])
+        self._pages = list(pages)
+        self._idx = 0
+
+    def execute(self):
+        rows = self._pages[self._idx] if self._idx < len(self._pages) else []
+        self._idx += 1
+        return _Result(rows)
+
+
+class TestListIngestibleCampaigns:
+    def test_filtros_meta_real_con_cuenta(self):
+        q = FakeQuery(rows=[])
+        with patch.object(sc, "_get_client", return_value=q):
+            sc.list_ingestible_campaigns()
+        assert q.table_name == "campaigns"
+        assert ("eq", "platform", "meta") in q.filters
+        assert ("eq", "is_mock", False) in q.filters
+        assert ("is", "deleted_at", "null") in q.filters
+        assert ("not.is", "account_id", "null") in q.filters
+        assert q.limit_n is None
+
+    def test_no_usa_list_campaigns(self):
+        q = FakeQuery(rows=[])
+        with patch.object(sc, "_get_client", return_value=q):
+            with patch.object(sc, "list_campaigns") as listed:
+                sc.list_ingestible_campaigns()
+                listed.assert_not_called()
+
+    def test_paginacion_recorre_todas_las_paginas(self):
+        page1 = [{"campaign_id": f"c{i}", "account_id": "a"} for i in range(3)]
+        page2 = [{"campaign_id": "c3", "account_id": "a"}]
+        q = _PagingQuery([page1, page2])
+        with patch.object(sc, "_get_client", return_value=q):
+            rows = sc.list_ingestible_campaigns(page_size=3)
+        assert [r["campaign_id"] for r in rows] == ["c0", "c1", "c2", "c3"]
+        assert q.range_calls == [(0, 2), (3, 5)]
+

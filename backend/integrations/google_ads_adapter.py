@@ -13,6 +13,7 @@ Diseño:
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import Optional
 
 from backend.integrations.base import (
@@ -167,7 +168,13 @@ class GoogleAdsAdapter:
             ),
         )
 
-    def get_campaign(self, credentials: GoogleAdsCreds, campaign_id: str) -> CampaignStatus:
+    def get_campaign(
+        self,
+        credentials: GoogleAdsCreds,
+        campaign_id: str,
+        metric_date: Optional[date] = None,
+    ) -> CampaignStatus:
+        # metric_date se acepta por contrato; este adapter no pide reports diarios.
         self._check(credentials)
         client = self._build_client(credentials)
         customer_id = credentials.normalized_customer_id

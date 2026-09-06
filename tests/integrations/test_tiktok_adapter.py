@@ -3,6 +3,7 @@ Tests del TikTokAdapter — http client inyectado, cero red.
 """
 from __future__ import annotations
 
+from datetime import date
 from unittest.mock import MagicMock
 
 import pytest
@@ -134,6 +135,17 @@ def test_get_campaign_handles_not_found(valid_creds):
     status = adapter.get_campaign(valid_creds, "tt_999")
     assert status.status == "UNKNOWN"
     assert status.error == "campaign not found"
+
+
+def test_get_campaign_acepta_metric_date_sin_fallar(valid_creds):
+    http = MagicMock()
+    http.get.return_value = _resp({"code": 0, "data": {"list": []}})
+    adapter = TikTokAdapter(http_client=http)
+    status = adapter.get_campaign(
+        valid_creds, "tt_999", metric_date=date(2026, 9, 5)
+    )
+    assert status.status == "UNKNOWN"
+    assert status.clicks == 0
 
 
 def test_sandbox_uses_sandbox_base_url():
