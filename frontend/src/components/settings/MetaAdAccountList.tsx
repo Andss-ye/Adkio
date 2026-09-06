@@ -9,14 +9,12 @@ import { Check } from '@/components/ui/Icons';
 /**
  * ADK-23 — Settings: lista y default de ad accounts Meta.
  *
- * Solo ad accounts. Page e Instagram quedan fuera de este PR.
+ * Solo ad accounts. Cablea contra `GET/POST /connect/meta/assets` (ADK-14).
  *
- * Pendiente de refactor (cuando ADK-7 esté Done+mergeado y ADK-14 exponga
- * page/IG): extender esta misma lista a `page` e `instagram` con un
- * `is_selected` por tipo (índice único parcial de Andrew). ADK-7 hoy sigue
- * In Progress (`feature/andrew-base-cuentas-meta`, no está en main).
- *
- * Wire real: solo si ADK-14 está mergeado. Hoy el data layer es mock.
+ * Pendiente de refactor: extender esta misma lista a `page` e `instagram` con
+ * un `is_selected` por tipo (el schema de `platform_assets` ya lo soporta,
+ * ver `backend/db/migrations/009_platform_assets.sql`); la UI de Settings
+ * hoy solo consume `ad_account`.
  */
 export default function MetaAdAccountList() {
   const [accounts, setAccounts] = useState<MetaAdAccount[]>([]);
@@ -71,14 +69,8 @@ export default function MetaAdAccountList() {
           Ad accounts
         </span>
         <p className="text-xs text-white/55 leading-relaxed">
-          Elegí de qué ad account se van a crear las campañas. Hoy es una lista de
-          ejemplo; no gasta plata.
+          Elegí de qué ad account se van a crear las campañas.
         </p>
-      </div>
-
-      <div className="text-[11px] text-amber-200/80 leading-relaxed px-3 py-2 rounded-lg bg-amber-500/[0.06] border border-amber-500/20">
-        Lista de ejemplo (PYME con 3 ad accounts). Se cablea a tu cuenta de Meta
-        cuando exista la API. El default se guarda en este navegador.
       </div>
 
       {error && (
