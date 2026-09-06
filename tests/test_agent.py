@@ -182,6 +182,32 @@ async def test_approve_and_launch_returns_dict():
 
 
 @pytest.mark.asyncio
+async def test_approve_rechaza_copy_con_claims_bloqueados():
+    """El guardrail corre en approve, no solo en el plan: el veredicto que manda
+    el cliente en `plan["claims"]` no puede saltearlo."""
+    from backend.agents.campaign_agent import approve_and_launch
+
+    plan = {
+        "copy": {
+            "headline": "Resultados garantizados en 30 días",
+            "body": "Cuerpo.", "cta": "Ver más", "rationale": "OK",
+        },
+        "targeting": {
+            "intereses": [], "edad_min": 28, "edad_max": 52,
+            "paises": [], "tamano_estimado": 500_000, "exclusiones": [],
+        },
+        "budget": {"aprobado": True, "presupuesto_diario_calculado": 10.0, "warnings": [], "rationale": ""},
+        "validation": {"passed": True, "warnings": [], "blockers": [], "checklist_results": {}, "rationale": ""},
+        # El cliente miente: dice que pasó.
+        "claims": {"passed": True, "blockers": [], "warnings": [], "claims": [], "rationale": ""},
+        "duracion_dias": 7,
+    }
+
+    with pytest.raises(ValueError, match="claims"):
+        await approve_and_launch(plan)
+
+
+@pytest.mark.asyncio
 async def test_approve_campaign_id_starts_with_act():
     from backend.agents.campaign_agent import approve_and_launch
 

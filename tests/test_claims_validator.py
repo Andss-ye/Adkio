@@ -55,6 +55,26 @@ class TestCopyLimpio:
         ]:
             assert _validar(headline)["claims"] == [], headline
 
+    def test_verbos_clinicos_sin_dolencia_no_bloquean(self):
+        """"cura" y "elimina" sueltos son lenguaje B2B normal, no claims de salud."""
+        for headline in [
+            "Elimina el papeleo de tu empresa",
+            "Elimina las filas en tu comercio",
+            "El cura de la parroquia nos acompaña",
+        ]:
+            assert _validar(headline)["passed"] is True, headline
+
+    def test_verbos_clinicos_con_dolencia_si_bloquean(self):
+        """El mismo verbo con complemento clínico sí es un claim de salud."""
+        for headline in ["Elimina el acné en dos semanas", "Cura la ansiedad sin pastillas"]:
+            r = _validar(headline)
+            assert r["passed"] is False, headline
+            assert {c["categoria"] for c in r["claims"]} == {"salud"}, headline
+
+    def test_copy_en_ingles_no_esta_cubierto(self):
+        """Límite conocido y documentado: los patrones son solo en español."""
+        assert _validar("Guaranteed results in 30 days")["passed"] is True
+
 
 class TestPromesaDeResultado:
     def test_resultados_garantizados_bloquea(self):

@@ -474,6 +474,20 @@ async def approve_and_launch(plan: dict) -> dict:
             "El presupuesto calculado es cero — budget_validator debe ejecutarse antes de aprobar"
         )
 
+    # El `plan` llega en el body de la request: `plan["claims"]` es un dato del
+    # cliente, no una verificación. Recalculamos sobre el copy que se va a lanzar
+    # y descartamos el veredicto que vino de afuera — si no, el guardrail se
+    # saltea mandando {"claims": {"passed": true}}.
+    # Sin `brand_config` acá corren solo los patrones generales; alcanzan para las
+    # cuatro categorías que bloquean (la lista por vertical solo suma casos).
+    claims = _run_claims_validator({}, {"copy_generator": copy})
+    if claims.get("passed") is False:
+        detalle = " ".join(claims.get("blockers", []))
+        raise ValueError(
+            "El copy tiene claims que Meta rechaza en ad review. "
+            f"Reescribilo antes de aprobar la campaña. {detalle}".strip()
+        )
+
     platform_reco = plan.get("platform_recommendation") or {}
     platform = platform_reco.get("platform") or "meta"
     canal = copy.get("canal") or _default_canal_for(platform)
@@ -491,7 +505,7 @@ async def approve_and_launch(plan: dict) -> dict:
         "budget_validator": budget,
         "audience_analyzer": targeting,
         "copy_generator": copy,
-        "claims_validator": plan.get("claims", {}),
+        "claims_validator": claims,
         "campaign_validator": plan.get("validation", {}),
     }
 

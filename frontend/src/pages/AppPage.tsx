@@ -1,7 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { isLoggedIn, getAccount, logout as authLogout } from '@/lib/auth';
-import { useCampaignStream, type StreamStatus, type PlatformHint, type ToolEvent } from '@/hooks/useCampaignStream';
+import {
+  useCampaignStream,
+  type StreamStatus, type PlatformHint, type ToolEvent,
+  type Claim, type ClaimsResult,
+} from '@/hooks/useCampaignStream';
+import { buildClaimsFeedback, etiquetaDe, splitClaims } from '@/lib/claims';
 import { useViewport } from '@/hooks/useViewport';
 import Sidebar, { type SidebarSection } from '@/components/shell/Sidebar';
 import TopBar from '@/components/shell/TopBar';
@@ -42,6 +47,9 @@ type ThreadMsg = {
   text: string;
   ts: string;
   chips?: string[];
+  /** Vuelve accionable al primer chip. Es un intent serializable, no un callback:
+   *  el thread es estado y no queremos guardar funciones adentro. */
+  chipAction?: 'fix_claims';
 };
 
 type ColTab = 'chat' | 'reasoning' | 'draft';
@@ -64,12 +72,45 @@ function toolDisplayName(t: string): string {
     copy_generator: 'creative.generate',
     audience_analyzer: 'audience.build',
     budget_validator: 'budget.validate',
+    claims_validator: 'claims.validate',
     campaign_validator: 'campaign.validate',
     campaign_launcher: 'campaign.deploy',
     report_generator: 'report.build',
     platform_recommender: 'platform.recommend',
   };
   return map[t] ?? t.replace(/_/g, '.');
+}
+
+/* Tono visual del guardrail de claims. Sale de los tokens de `.adkio-surface`:
+   --neg para lo que bloquea, el ámbar que ya usa la app para lo que advierte,
+   --pos para lo limpio. */
+type ClaimsTone = { color: string; bg: string; border: string };
+
+const CLAIMS_TONES: Record<'blocked' | 'warned' | 'clean', ClaimsTone> = {
+  blocked: { color: 'var(--neg)', bg: 'rgba(233,122,122,.07)', border: 'rgba(233,122,122,.28)' },
+  warned: { color: '#E8B260', bg: 'rgba(232,178,96,.07)', border: 'rgba(232,178,96,.25)' },
+  clean: { color: 'var(--pos)', bg: 'rgba(124,217,146,.06)', border: 'rgba(124,217,146,.22)' },
+};
+
+function claimsToneKey(result?: ClaimsResult | null): 'blocked' | 'warned' | 'clean' {
+  if (!result) return 'clean';
+  if (result.passed === false) return 'blocked';
+  return (result.warnings?.length ?? 0) > 0 ? 'warned' : 'clean';
+}
+
+function platformLabel(p: 'meta' | 'tiktok' | 'google_ads'): string {
+  return p === 'meta' ? 'Meta' : p === 'tiktok' ? 'TikTok' : 'Google';
+}
+
+function claimsCountLabel(result: ClaimsResult): string {
+  // Sin detalle estructurado caemos a los strings humanizados: son la misma
+  // cuenta, y un backend degradado puede mandar solo esos.
+  const { blockers, warnings } = splitClaims(result);
+  const nBlockers = blockers.length > 0 ? blockers.length : result.blockers?.length ?? 0;
+  const nWarnings = warnings.length > 0 ? warnings.length : result.warnings?.length ?? 0;
+  if (nBlockers > 0) return `${nBlockers} ${nBlockers === 1 ? 'bloqueado' : 'bloqueados'}`;
+  if (nWarnings > 0) return `${nWarnings} ${nWarnings === 1 ? 'advertencia' : 'advertencias'}`;
+  return 'sin claims';
 }
 
 export default function AppPage() {
@@ -140,16 +181,28 @@ export default function AppPage() {
   /* Status-driven AI messages — append once per status change */
   useEffect(() => {
     if (status === 'plan_ready' && plan) {
+      const bloqueado = plan.claims?.passed === false;
       setThread((prev) =>
-        prev.some((m) => m.role === 'ai' && m.text.startsWith('Plan listo'))
+        prev.some(
+          (m) => m.role === 'ai' && (m.text.startsWith('Plan listo') || m.text.startsWith('Armé el plan')),
+        )
           ? prev
           : [
               ...prev,
-              {
-                role: 'ai', ts: nowStamp(),
-                text: 'Plan listo. Revisá el draft y aprobá cuando quieras que lo deploye.',
-                chips: ['Aprobar y deployar', 'Bajar presupuesto', 'Cambiar audiencia'],
-              },
+              bloqueado
+                ? {
+                    role: 'ai', ts: nowStamp(),
+                    text:
+                      'Armé el plan, pero el copy tiene claims que la plataforma rechaza en ad review. ' +
+                      'Mirá el detalle en Reasoning y en el draft: hay que reescribirlo antes de deployar.',
+                    chips: ['Reescribir sin esos claims'],
+                    chipAction: 'fix_claims',
+                  }
+                : {
+                    role: 'ai', ts: nowStamp(),
+                    text: 'Plan listo. Revisá el draft y aprobá cuando quieras que lo deploye.',
+                    chips: ['Aprobar y deployar', 'Bajar presupuesto', 'Cambiar audiencia'],
+                  },
             ],
       );
     }
@@ -181,27 +234,32 @@ export default function AppPage() {
 
   const isStreaming = status === 'streaming' || status === 'approving' || refining;
 
+  /** Pide un ajuste del plan vigente y lo narra en el thread. Lo comparte el
+   *  composer con el botón de "Reescribir sin estos claims" del draft. */
+  const submitRefine = (feedback: string) => {
+    if (!feedback || isStreaming) return;
+    setThread((prev) => [...prev, { role: 'user', text: feedback, ts: nowStamp() }]);
+    setInput('');
+    refineCampaign(feedback).then((r) => {
+      setThread((prev) => [
+        ...prev,
+        {
+          role: 'ai',
+          ts: nowStamp(),
+          text: r.ok
+            ? `✏️ ${r.summary ?? 'Plan actualizado.'}`
+            : `No pude ajustar: ${r.error ?? 'error'}`,
+        },
+      ]);
+    });
+  };
+
   const handleSend = (override?: string) => {
     if (isStreaming) return;
     const raw = (override ?? input).trim();
     // En plan_ready, el chat REFINA el plan existente (no arranca de cero).
     if (status === 'plan_ready' && plan) {
-      const feedback = raw;
-      if (!feedback) return;
-      setThread((prev) => [...prev, { role: 'user', text: feedback, ts: nowStamp() }]);
-      setInput('');
-      refineCampaign(feedback).then((r) => {
-        setThread((prev) => [
-          ...prev,
-          {
-            role: 'ai',
-            ts: nowStamp(),
-            text: r.ok
-              ? `✏️ ${r.summary ?? 'Plan actualizado.'}`
-              : `No pude ajustar: ${r.error ?? 'error'}`,
-          },
-        ]);
-      });
+      submitRefine(raw);
       return;
     }
     const text = raw || DEMO_PROMPT;
@@ -244,6 +302,24 @@ export default function AppPage() {
 
   const compactBar = vp.isSm;
 
+  /* El copy tiene claims que la plataforma rechaza en ad review: no se deploya
+     hasta reescribirlo. `approve_and_launch` también lo revalida server-side,
+     así que esto es la explicación en pantalla, no el único freno. */
+  const claimsBlocked = status === 'plan_ready' && plan?.claims?.passed === false;
+
+  const handleFixClaims = () => {
+    const { blockers } = splitClaims(plan?.claims);
+    submitRefine(buildClaimsFeedback(blockers));
+  };
+
+  const handleEditClaimsInChat = () => {
+    const { blockers } = splitClaims(plan?.claims);
+    setInput(buildClaimsFeedback(blockers));
+    if (useTabs) setActiveTab('chat');
+    // Esperamos al re-render de la columna de chat antes de enfocar.
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
   const chatCol = (
     <ChatColumn
       thread={thread}
@@ -259,9 +335,12 @@ export default function AppPage() {
       statusLabel={STATUS_LABELS[status]}
       bordered={!useTabs}
       refineMode={status === 'plan_ready'}
+      onChipAction={(a) => a === 'fix_claims' && handleFixClaims()}
+      chipDisabled={isStreaming || !claimsBlocked}
     />
   );
   const reasoningCol = <ReasoningColumn toolEvents={toolEvents} status={status} />;
+
   const draftCol = (
     <DraftColumn
       plan={plan}
@@ -271,6 +350,11 @@ export default function AppPage() {
       onDeploy={() => approveCampaign()}
       onReset={handleReset}
       bordered={!useTabs}
+      claimsBlocked={claimsBlocked}
+      refining={refining}
+      canRefine={mode === 'live'}
+      onFixClaims={handleFixClaims}
+      onEditClaimsInChat={handleEditClaimsInChat}
     />
   );
 
@@ -341,9 +425,17 @@ export default function AppPage() {
               )}
               <button
                 onClick={() => approveCampaign()}
-                disabled={status !== 'plan_ready'}
-                style={primaryBtnStyle(status !== 'plan_ready')}
-                title={status !== 'plan_ready' ? 'Plan must be ready before deploying' : 'Deploy now'}
+                disabled={status !== 'plan_ready' || claimsBlocked || refining}
+                style={primaryBtnStyle(status !== 'plan_ready' || claimsBlocked || refining)}
+                title={
+                  claimsBlocked
+                    ? 'El copy tiene claims que la plataforma rechaza — reescribilo antes de deployar'
+                    : refining
+                      ? 'Esperá a que termine el ajuste del plan'
+                      : status !== 'plan_ready'
+                        ? 'Plan must be ready before deploying'
+                        : 'Deploy now'
+                }
               >
                 <IcCheck width={13} height={13} />
                 {vp.isSm ? 'Deploy' : 'Deploy campaign'}
@@ -532,6 +624,7 @@ function BackendBadge({
 function ChatColumn({
   thread, input, onInput, onKeyDown, onSend, isStreaming, inputRef, threadRef,
   platformHint, onPlatformHint, statusLabel, bordered, refineMode = false,
+  onChipAction, chipDisabled,
 }: {
   thread: ThreadMsg[];
   input: string;
@@ -546,6 +639,8 @@ function ChatColumn({
   statusLabel: string;
   bordered: boolean;
   refineMode?: boolean;
+  onChipAction?: (action: NonNullable<ThreadMsg['chipAction']>) => void;
+  chipDisabled?: boolean;
 }) {
   const [openPlatform, setOpenPlatform] = useState(false);
 
@@ -574,7 +669,7 @@ function ChatColumn({
         }}
       >
         {thread.map((m, i) => (
-          <Message key={i} msg={m} />
+          <Message key={i} msg={m} onChipAction={onChipAction} chipDisabled={chipDisabled} />
         ))}
         {isStreaming && (
           <div style={{ display: 'flex', gap: 4, paddingLeft: 30 }}>
@@ -859,8 +954,15 @@ function composerPillBtn(): React.CSSProperties {
   };
 }
 
-function Message({ msg }: { msg: ThreadMsg }) {
+function Message({
+  msg, onChipAction, chipDisabled,
+}: {
+  msg: ThreadMsg;
+  onChipAction?: (action: NonNullable<ThreadMsg['chipAction']>) => void;
+  chipDisabled?: boolean;
+}) {
   const isUser = msg.role === 'user';
+  const action = msg.chipAction;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-3)', fontSize: 11.5 }}>
@@ -897,23 +999,41 @@ function Message({ msg }: { msg: ThreadMsg }) {
         <p style={{ margin: 0 }}>{msg.text}</p>
         {msg.chips && msg.chips.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-            {msg.chips.map((c, i) => (
-              <span
-                key={i}
-                style={{
-                  fontSize: 11, color: i === 0 ? '#9cc4ff' : 'var(--text-2)',
-                  background:
-                    i === 0 ? 'rgba(126,182,255,.07)' : 'rgba(255,255,255,.04)',
-                  border:
-                    i === 0
-                      ? '1px solid rgba(126,182,255,.3)'
-                      : '1px solid rgba(255,255,255,.06)',
-                  padding: '3px 8px', borderRadius: 999,
-                }}
-              >
-                {c}
-              </span>
-            ))}
+            {msg.chips.map((c, i) => {
+              const chipStyle: React.CSSProperties = {
+                fontSize: 11, color: i === 0 ? '#9cc4ff' : 'var(--text-2)',
+                background: i === 0 ? 'rgba(126,182,255,.07)' : 'rgba(255,255,255,.04)',
+                border:
+                  i === 0
+                    ? '1px solid rgba(126,182,255,.3)'
+                    : '1px solid rgba(255,255,255,.06)',
+                padding: '3px 8px', borderRadius: 999,
+              };
+              /* Solo el primer chip puede ser accionable, y solo si el mensaje
+                 declaró un intent. El resto siguen siendo sugerencias de qué
+                 tipear, no botones. */
+              if (i === 0 && action && onChipAction) {
+                return (
+                  <button
+                    key={i}
+                    onClick={() => onChipAction(action)}
+                    disabled={chipDisabled}
+                    style={{
+                      ...chipStyle,
+                      cursor: chipDisabled ? 'not-allowed' : 'pointer',
+                      opacity: chipDisabled ? 0.5 : 1,
+                    }}
+                  >
+                    {c}
+                  </button>
+                );
+              }
+              return (
+                <span key={i} style={chipStyle}>
+                  {c}
+                </span>
+              );
+            })}
           </div>
         )}
       </div>
@@ -1035,12 +1155,23 @@ function Timeline({ events, terminal }: { events: ToolEvent[]; terminal: StreamS
 function TimelineCard({ ev }: { ev: ToolEvent }) {
   const isRunning = ev.status === 'running';
   const isDone = ev.status === 'done';
+
+  /* claims_validator tiene render propio: el volcado JSON crudo esconde
+     justamente lo único que el usuario necesita — qué frase lo bloqueó. */
+  const claims = ev.tool === 'claims_validator' && isDone
+    ? (ev.result as unknown as ClaimsResult | undefined)
+    : undefined;
+  const toneKey = claims ? claimsToneKey(claims) : 'clean';
+  const tone = CLAIMS_TONES[toneKey];
+  const flagged = Boolean(claims) && toneKey !== 'clean';
+  const dotColor = flagged ? tone.color : '#5b9dff';
+
   return (
     <div
       style={{
         position: 'relative',
         background: 'var(--bg-card)',
-        border: '1px solid var(--hairline)',
+        border: '1px solid ' + (flagged ? tone.border : 'var(--hairline)'),
         borderRadius: 12, padding: '12px 14px',
         display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0,
       }}
@@ -1048,12 +1179,12 @@ function TimelineCard({ ev }: { ev: ToolEvent }) {
       <div
         style={{
           position: 'absolute', left: -22, top: 14, width: 14, height: 14,
-          borderRadius: '50%', background: isDone ? '#5b9dff' : '#0E1116',
-          border: '2px solid ' + (isDone ? '#5b9dff' : isRunning ? '#7eb6ff' : 'rgba(126,182,255,.45)'),
+          borderRadius: '50%', background: isDone ? dotColor : '#0E1116',
+          border: '2px solid ' + (isDone ? dotColor : isRunning ? '#7eb6ff' : 'rgba(126,182,255,.45)'),
           animation: isRunning ? 'adkio-dot-pulse 1.4s infinite' : 'none',
         }}
       />
-      {isDone && (
+      {isDone && !flagged && (
         <div
           style={{
             position: 'absolute', left: -17, top: 18, width: 4, height: 7,
@@ -1075,6 +1206,17 @@ function TimelineCard({ ev }: { ev: ToolEvent }) {
         >
           {toolDisplayName(ev.tool)}
         </b>
+        {claims && (
+          <span
+            style={{
+              fontSize: 10.5, letterSpacing: '.04em', flexShrink: 0,
+              padding: '2px 7px', borderRadius: 5,
+              color: tone.color, background: tone.bg, border: `1px solid ${tone.border}`,
+            }}
+          >
+            {claimsCountLabel(claims)}
+          </span>
+        )}
         <span
           className="tab-num"
           style={{ marginLeft: 'auto', color: 'var(--text-3)', fontSize: 11, flexShrink: 0 }}
@@ -1089,7 +1231,9 @@ function TimelineCard({ ev }: { ev: ToolEvent }) {
         </div>
       )}
 
-      {isDone && ev.result && (
+      {claims && <ClaimsBreakdown result={claims} />}
+
+      {isDone && ev.result && !claims && (
         <div
           className="font-mono dark-scroll"
           style={{
@@ -1104,6 +1248,92 @@ function TimelineCard({ ev }: { ev: ToolEvent }) {
           {formatJsonish(ev.result)}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Detalle de `claims_validator`: por cada claim, la frase exacta que lo disparó,
+ * en qué campo del copy está y cómo arreglarla. Lo comparten el panel de
+ * razonamiento y el draft.
+ */
+function ClaimsBreakdown({ result }: { result: ClaimsResult }) {
+  const { blockers, warnings } = splitClaims(result);
+  const ordenados = [...blockers, ...warnings];
+
+  // El backend degradado (o uno futuro) puede traer los strings humanizados sin
+  // el detalle estructurado. Mejor listarlos crudos que no mostrar nada.
+  if (ordenados.length === 0) {
+    const sueltos = [...(result.blockers ?? []), ...(result.warnings ?? [])];
+    if (sueltos.length === 0) {
+      return (
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', gap: 7,
+            fontSize: 12, color: 'var(--pos)',
+          }}
+        >
+          <IcCheck width={12} height={12} />
+          Sin claims riesgosos para las políticas de contenido.
+        </div>
+      );
+    }
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {sueltos.map((s, i) => (
+          <div key={i} style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.5 }}>
+            · {s}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {ordenados.map((c, i) => (
+        <ClaimRow key={`${c.campo}-${c.categoria}-${i}`} claim={c} />
+      ))}
+    </div>
+  );
+}
+
+function ClaimRow({ claim }: { claim: Claim }) {
+  const tone = CLAIMS_TONES[claim.severidad === 'blocker' ? 'blocked' : 'warned'];
+  return (
+    <div
+      style={{
+        background: tone.bg, border: `1px solid ${tone.border}`,
+        borderRadius: 10, padding: '9px 11px',
+        display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+        <span
+          style={{
+            fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase',
+            fontWeight: 500, padding: '2px 7px', borderRadius: 5,
+            color: tone.color, border: `1px solid ${tone.border}`,
+            background: 'rgba(0,0,0,.18)',
+          }}
+        >
+          {claim.severidad === 'blocker' ? 'Bloquea' : 'Advierte'}
+        </span>
+        <span style={{ fontSize: 11.5, color: 'var(--text-2)' }}>
+          {etiquetaDe(claim.categoria)} · {claim.campo}
+        </span>
+      </div>
+      <div
+        className="font-mono"
+        style={{
+          fontSize: 12, color: 'var(--text)', lineHeight: 1.45, wordBreak: 'break-word',
+        }}
+      >
+        «{claim.texto}»
+      </div>
+      <div style={{ fontSize: 11.5, color: 'var(--text-3)', lineHeight: 1.5, wordBreak: 'break-word' }}>
+        ↳ {claim.sugerencia}
+      </div>
     </div>
   );
 }
@@ -1185,6 +1415,7 @@ function formatJsonish(obj: Record<string, unknown> | unknown, depth = 0): strin
 
 function DraftColumn({
   plan, launchResult, status, platformHint, onDeploy, onReset, bordered,
+  claimsBlocked, refining, canRefine, onFixClaims, onEditClaimsInChat,
 }: {
   plan: ReturnType<typeof useCampaignStream>['plan'];
   launchResult: ReturnType<typeof useCampaignStream>['launchResult'];
@@ -1193,6 +1424,12 @@ function DraftColumn({
   onDeploy: () => void;
   onReset: () => void;
   bordered: boolean;
+  claimsBlocked: boolean;
+  refining: boolean;
+  /** El refine agéntico necesita backend vivo — en modo demo no está disponible. */
+  canRefine: boolean;
+  onFixClaims: () => void;
+  onEditClaimsInChat: () => void;
 }) {
   const platform: 'meta' | 'tiktok' | 'google_ads' =
     launchResult?.platform ??
@@ -1222,6 +1459,16 @@ function DraftColumn({
             <SummaryCard plan={plan} platform={platform} />
             <AudienceCard plan={plan} />
             <CreativeCard plan={plan} />
+            {plan.claims && (
+              <ClaimsCard
+                result={plan.claims}
+                refining={refining}
+                canRefine={canRefine}
+                platform={platform}
+                onFix={onFixClaims}
+                onEditInChat={onEditClaimsInChat}
+              />
+            )}
             <ForecastCard plan={plan} launchResult={launchResult} />
             <DeployCard
               status={status}
@@ -1229,6 +1476,7 @@ function DraftColumn({
               onReset={onReset}
               platform={platform}
               launchResult={launchResult}
+              claimsBlocked={claimsBlocked}
             />
           </>
         ) : (
@@ -1438,6 +1686,78 @@ function CreativeCard({ plan }: { plan: NonNullable<ReturnType<typeof useCampaig
   );
 }
 
+/**
+ * Guardrail de políticas de contenido en el draft. Con el copy limpio es una
+ * línea de confianza; con claims bloqueados es el motivo del bloqueo + cómo
+ * salir de él.
+ */
+function ClaimsCard({
+  result, refining, canRefine, platform, onFix, onEditInChat,
+}: {
+  result: ClaimsResult;
+  refining: boolean;
+  canRefine: boolean;
+  platform: 'meta' | 'tiktok' | 'google_ads';
+  onFix: () => void;
+  onEditInChat: () => void;
+}) {
+  const toneKey = claimsToneKey(result);
+  const tone = CLAIMS_TONES[toneKey];
+  const bloqueado = toneKey === 'blocked';
+
+  return (
+    <ResultCard title="Políticas de contenido">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span
+          style={{
+            fontSize: 10.5, letterSpacing: '.04em',
+            padding: '2px 7px', borderRadius: 5,
+            color: tone.color, background: tone.bg, border: `1px solid ${tone.border}`,
+          }}
+        >
+          {claimsCountLabel(result)}
+        </span>
+        {bloqueado && (
+          <span style={{ fontSize: 11.5, color: 'var(--neg)' }}>
+            {platformLabel(platform)} rechazaría este anuncio en ad review.
+          </span>
+        )}
+      </div>
+
+      {result.rationale && (
+        <div style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.55 }}>
+          {result.rationale}
+        </div>
+      )}
+
+      <ClaimsBreakdown result={result} />
+
+      {bloqueado && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            onClick={onFix}
+            disabled={refining || !canRefine}
+            title={
+              canRefine
+                ? 'Adkio reescribe el copy sin estos claims'
+                : 'El ajuste necesita el backend en vivo (ahora estás en modo demo)'
+            }
+            style={{
+              ...primaryBtnStyle(refining || !canRefine),
+              flex: 1, minWidth: 180, justifyContent: 'center', padding: 10, fontSize: 13,
+            }}
+          >
+            {refining ? 'Reescribiendo…' : 'Reescribir sin estos claims'}
+          </button>
+          <button onClick={onEditInChat} disabled={refining} style={ghostBtnStyle()}>
+            Editar en el chat
+          </button>
+        </div>
+      )}
+    </ResultCard>
+  );
+}
+
 function ForecastCard({
   plan, launchResult,
 }: {
@@ -1501,13 +1821,14 @@ function Bcell({ label, value, sub, up }: { label: string; value: string; sub?: 
 }
 
 function DeployCard({
-  status, onDeploy, onReset, platform, launchResult,
+  status, onDeploy, onReset, platform, launchResult, claimsBlocked,
 }: {
   status: StreamStatus;
   onDeploy: () => void;
   onReset: () => void;
   platform: 'meta' | 'tiktok' | 'google_ads';
   launchResult: ReturnType<typeof useCampaignStream>['launchResult'];
+  claimsBlocked: boolean;
 }) {
   if (status === 'launched' && launchResult) {
     return (
@@ -1551,11 +1872,18 @@ function DeployCard({
   }
 
   return (
-    <ResultCard title="Ready to deploy" accent>
-      <p style={{ margin: 0, color: 'var(--text-2)', fontSize: 12.5, lineHeight: 1.55 }}>
-        Al deployar, Adkio <b style={{ color: 'var(--text)' }}>guarda la campaña</b> en tu workspace y
-        la crea en estado <b style={{ color: 'var(--text)' }}>PAUSED</b> para que la revises.
-      </p>
+    <ResultCard title={claimsBlocked ? 'Bloqueado por políticas' : 'Ready to deploy'} accent>
+      {claimsBlocked ? (
+        <p style={{ margin: 0, color: 'var(--neg)', fontSize: 12.5, lineHeight: 1.55 }}>
+          El copy tiene claims que {platformLabel(platform)} rechaza en ad review. Reescribilo
+          desde <b>Políticas de contenido</b> —acá arriba— antes de deployar.
+        </p>
+      ) : (
+        <p style={{ margin: 0, color: 'var(--text-2)', fontSize: 12.5, lineHeight: 1.55 }}>
+          Al deployar, Adkio <b style={{ color: 'var(--text)' }}>guarda la campaña</b> en tu workspace y
+          la crea en estado <b style={{ color: 'var(--text)' }}>PAUSED</b> para que la revises.
+        </p>
+      )}
       {!isLoggedIn() && (
         <p style={{ margin: 0, fontSize: 11.5, lineHeight: 1.5, color: '#E8B260' }}>
           ⚠ No iniciaste sesión: la campaña no quedará guardada en tu workspace.{' '}
@@ -1579,8 +1907,13 @@ function DeployCard({
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <button
           onClick={onDeploy}
-          disabled={status !== 'plan_ready'}
-          style={{ ...primaryBtnStyle(status !== 'plan_ready'), flex: 1, minWidth: 140, justifyContent: 'center', padding: 10, fontSize: 13 }}
+          disabled={status !== 'plan_ready' || claimsBlocked}
+          title={
+            claimsBlocked
+              ? `Reescribí el copy sin los claims que ${platformLabel(platform)} rechaza`
+              : undefined
+          }
+          style={{ ...primaryBtnStyle(status !== 'plan_ready' || claimsBlocked), flex: 1, minWidth: 140, justifyContent: 'center', padding: 10, fontSize: 13 }}
         >
           <IcCheck width={13} height={13} />
           {status === 'approving' ? 'Deploying…' : 'Deploy now'}
