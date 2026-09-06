@@ -14,11 +14,27 @@ Categorías y su severidad:
                                     al usuario; la causa nº1 de rechazo real
     superlativo           warning   "el mejor del mercado" — pasa si se puede
                                     sustentar, pero conviene revisarlo
+
+Alcance: **solo copy en español**. Los patrones son castellanos, así que un copy
+en inglés o portugués pasa limpio sin que nadie lo revise ("Guaranteed results in
+30 days" → passed=True). Mientras `copy_generator` genere en español alcanza; el
+día que se soporte otro idioma hay que sumar sus patrones o el guardrail deja de
+existir para ese mercado.
 """
 import re
 from typing import Optional
 
 _CAMPOS = ("headline", "body", "cta")
+
+# Dolencias que convierten un verbo genérico ("cura", "elimina") en un claim de
+# salud. Sin este complemento el verbo solo no alcanza: "elimina el papeleo" es
+# un cliché de SaaS, no una promesa clínica.
+_DOLENCIAS = (
+    r"(?:ansiedad|depresi[oó]n|insomnio|estr[eé]s|dolor(?:es)?|migra[ñn]as?|"
+    r"acn[eé]|celulitis|grasa|obesidad|sobrepeso|diabetes|hipertensi[oó]n|"
+    r"c[aá]ncer|alergias?|adicci[oó]n(?:es)?|calvicie|artritis|gastritis|"
+    r"colesterol|v[aá]rices|hongos|caspa|enfermedad(?:es)?|s[ií]ntomas?)\b"
+)
 
 # Los patrones se escriben sin acentos obligatorios ([aá]) porque el copy del LLM
 # alterna entre voseo acentuado y no acentuado.
@@ -33,8 +49,10 @@ _PATRONES = {
         r"\bresultados?\s+en\s+\d+\s*(?:d[ií]as?|semanas?|horas?)\b",
     ],
     "salud": [
-        r"\bcura\b|\bcurar\b|\bcura\s+(?:el|la|los|las)\b",
-        r"\belimina\s+(?:el|la|los|las)\s+\w+",
+        # "cura"/"elimina" necesitan complemento clínico: sueltos bloqueaban copy
+        # B2B normal ("elimina el papeleo", "el cura de la parroquia").
+        r"\bcura(?:r|n|mos)?\s+(?:el|la|los|las|tu|tus|su|sus)?\s*" + _DOLENCIAS,
+        r"\belimina(?:r|n|mos)?\s+(?:el|la|los|las|tu|tus|su|sus)?\s*" + _DOLENCIAS,
         r"\b(?:baj[aá]|perd[eé]|adelgaz[aá])\w*\s+\d+\s*(?:kilos?|kg|libras?)\b",
         r"\bquema\s+grasa\b",
         r"\bmilagros[ao]\b",

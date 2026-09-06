@@ -328,7 +328,12 @@ async def approve_campaign(
     plan_with_account = dict(body.plan)
     plan_with_account["_account_id"] = getattr(request.state, "account_id", None)
 
-    result = await approve_and_launch(plan_with_account)
+    try:
+        result = await approve_and_launch(plan_with_account)
+    except ValueError as exc:
+        # Plan no aprobable (presupuesto en cero, claims que Meta rechaza). El
+        # mensaje le dice al usuario qué arreglar, así que va tal cual.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     campaign_id = result.get("campaign_id", f"adkio_{int(datetime.now(timezone.utc).timestamp())}")
     _campaigns[campaign_id] = {

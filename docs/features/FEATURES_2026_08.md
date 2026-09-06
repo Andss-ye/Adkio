@@ -92,13 +92,22 @@ marca que después alimenta el RAG.
 **Ojo de seguridad:** los captions son texto de terceros — van como dato en el prompt, nunca como
 instrucción ni en el rol `system` (riesgo de prompt injection).
 
-### `claims_validator` determinista
-Falta un validador (regex + lista negra por vertical) que corra antes de `campaign_validator` y
-bloquee claims que violan políticas de Meta: superlativos, promesas de resultado, antes/después,
-claims de salud.
+### `claims_validator` determinista — **hecho** (ADK-10 + ADK-25)
+Validador (regex + lista negra por vertical) que corre antes de `campaign_validator` y bloquea
+claims que violan políticas de Meta: promesas de resultado, claims de salud, antes/después y
+atributos personales. La UI muestra la frase exacta que bloqueó, en qué campo del copy está y cómo
+reescribirla, y no deja deployar hasta arreglarla.
 
 **Por qué importa:** con plata real, esta es la causa número uno de rechazo de un anuncio en el ad
 review de Meta.
+
+**Límite conocido:** los patrones son en español. Un copy en inglés o portugués pasa limpio sin
+revisión. Hoy `copy_generator` genera en español, pero soportar otro mercado implica sumar sus
+patrones o el guardrail no existe ahí.
+
+**Diferencia con lo planeado:** este doc pedía bloquear también los **superlativos**. La
+implementación los deja en `warning`: pasan si se pueden sustentar, así que bloquearlos frenaría
+campañas legítimas. El resto de las categorías sí bloquea.
 
 ---
 
