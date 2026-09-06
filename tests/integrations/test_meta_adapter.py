@@ -3,6 +3,7 @@ Tests del MetaAdapter — SDK inyectado, cero red.
 """
 from __future__ import annotations
 
+from datetime import date
 from unittest.mock import MagicMock
 
 import pytest
@@ -137,6 +138,33 @@ def test_get_campaign_returns_status(valid_creds, fake_sdk):
     assert status.reach == 100
     assert status.impressions == 200
     assert status.spend == 12.50
+    assert status.clicks == 0
+    assert status.metric_date is None
+    fake_sdk.Campaign.return_value.get_insights.assert_called_once_with(
+        fields=["reach", "impressions", "spend"]
+    )
+
+
+def test_get_campaign_con_fecha_pide_insights_del_dia(valid_creds, fake_sdk):
+    fake_sdk.Campaign.return_value.get_insights.return_value = [
+        {"reach": 10, "impressions": 20, "spend": "1.50", "clicks": "7"}
+    ]
+    adapter = MetaAdapter(sdk_module=fake_sdk)
+    day = date(2026, 9, 5)
+    status = adapter.get_campaign(valid_creds, "1234567890", metric_date=day)
+
+    assert status.clicks == 7
+    assert status.reach == 10
+    assert status.impressions == 20
+    assert status.spend == 1.50
+    assert status.metric_date == day
+    fake_sdk.Campaign.return_value.get_insights.assert_called_once_with(
+        fields=["reach", "impressions", "spend", "clicks"],
+        params={
+            "time_range": {"since": "2026-09-05", "until": "2026-09-05"},
+            "time_increment": 1,
+        },
+    )
 
 
 def test_get_campaign_handles_api_error_gracefully(valid_creds, fake_sdk):

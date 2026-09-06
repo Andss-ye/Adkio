@@ -20,7 +20,7 @@ Diseño:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from backend.integrations.base import (
@@ -442,16 +442,31 @@ class MetaAdapter:
             ),
         )
 
-    def get_campaign(self, credentials: MetaCreds, campaign_id: str) -> CampaignStatus:
+    def get_campaign(
+        self,
+        credentials: MetaCreds,
+        campaign_id: str,
+        metric_date: Optional[date] = None,
+    ) -> CampaignStatus:
         sdk = self._init_api(credentials)
         try:
             camp = sdk.Campaign(campaign_id).api_get(
                 fields=["name", "status", "objective"]
             )
             try:
-                insights_list = sdk.Campaign(campaign_id).get_insights(
-                    fields=["reach", "impressions", "spend"]
-                )
+                if metric_date is not None:
+                    day = metric_date.isoformat()
+                    insights_list = sdk.Campaign(campaign_id).get_insights(
+                        fields=["reach", "impressions", "spend", "clicks"],
+                        params={
+                            "time_range": {"since": day, "until": day},
+                            "time_increment": 1,
+                        },
+                    )
+                else:
+                    insights_list = sdk.Campaign(campaign_id).get_insights(
+                        fields=["reach", "impressions", "spend"]
+                    )
                 ins = dict(insights_list[0]) if insights_list else {}
             except sdk.FacebookRequestError:
                 ins = {}
@@ -465,6 +480,8 @@ class MetaAdapter:
                 reach=int(ins.get("reach", 0) or 0),
                 impressions=int(ins.get("impressions", 0) or 0),
                 spend=float(ins.get("spend", 0) or 0),
+                clicks=int(ins.get("clicks", 0) or 0),
+                metric_date=metric_date,
             )
         except sdk.FacebookRequestError as e:
             return CampaignStatus(
@@ -474,6 +491,7 @@ class MetaAdapter:
                 name=None,
                 objective=None,
                 error=e.api_error_message(),
+                metric_date=metric_date,
             )
 
 

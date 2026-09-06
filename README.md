@@ -38,7 +38,7 @@ API y qué hay en la base de datos.
 | Base de datos | Supabase (Postgres vía PostgREST) |
 | Plataformas de ads | `facebook-business` (Meta), REST directo (TikTok), `google-ads` (Google) |
 | Auth | Propia: tabla `accounts` + bcrypt + JWT HS256 (**no** Supabase Auth) |
-| Deploy | Railway (backend + frontend), Supabase gestionado aparte |
+| Deploy | Render (backend + Cron Job de métricas), Cloudflare Pages (frontend), Supabase aparte |
 
 ---
 
@@ -275,7 +275,7 @@ Convenciones transversales:
 | `POST` | `/campaign/refine` | 15/min | ✅ | Ajusta un plan según feedback, con 1 sola llamada al LLM |
 | `GET` | `/campaign/{id}` | — | — | Estado de una campaña **en memoria del proceso** |
 | `GET` | `/campaigns` | 30/min | — | Historial desde Supabase (por `account_id` si hay JWT, si no por `brand_id`) |
-| `GET` | `/campaigns/{id}/metrics` | 30/min | — | Métricas diarias de la campaña. **JWT obligatorio** (401 sin auth). Query opcionales: `from`, `to` (ISO date), `limit` (máx. 90) |
+| `GET` | `/campaigns/{id}/metrics` | 30/min | — | Métricas diarias de la campaña. **JWT obligatorio** (401 sin auth). Query opcionales: `from`, `to` (ISO date), `limit` (máx. 90). Las filas las escribe el job de ingesta (solo Meta); `clicks` llega con esa corrida |
 | `PATCH` | `/campaigns/{id}` | 20/min | ✅ | Cambia estado: `ACTIVE` \| `PAUSED` |
 | `DELETE` | `/campaigns/{id}` | 20/min | ✅ | Borrado **lógico** (`deleted_at`) |
 
@@ -396,7 +396,7 @@ que haya que tocarlo.
 | `platform_connections` | Tokens cifrados con Fernet. `UNIQUE (adkio_account_id, platform)` → una cuenta conecta una credencial por plataforma; los assets que esa credencial alcanza viven en `platform_assets` |
 | `platform_assets` | Los ad accounts, páginas y cuentas de Instagram que alcanza una conexión, una fila cada uno. `is_selected` marca el que usa el launcher, con un índice único parcial que impide dos elegidos del mismo `asset_type` |
 | `campaigns` | Historial de campañas lanzadas. **No está en `schema.sql`** |
-| `campaign_metrics` | Métricas diarias por `(account_id, platform, campaign_id, metric_date)`. `account_id` obligatorio. `clicks` puede quedar en 0 hasta la ingesta (ADK-16). Sin FK a `campaigns` |
+| `campaign_metrics` | Métricas diarias por `(account_id, platform, campaign_id, metric_date)`. `account_id` obligatorio. `metric_date` es DATE **UTC**. `clicks` se llena con la ingesta diaria (solo Meta). Sin FK a `campaigns` |
 | `whitelist` | Altas del webhook de Tally, upsert por `email` |
 
 Columnas de `campaigns` que el backend escribe (`_CAMPAIGN_FIELDS` en `db/supabase_client.py`):
@@ -408,7 +408,8 @@ y `created_at`. **Cualquier clave fuera de ese set se descarta en silencio al in
 Columnas de `campaign_metrics` que el backend escribe (`_METRICS_FIELDS`): `account_id`,
 `brand_id`, `platform`, `campaign_id`, `metric_date`, `impressions`, `reach`, `clicks`,
 `spend_usd`. Upsert por el UNIQUE diario; listado siempre filtra por `account_id`. No hay
-escritura HTTP pública — solo helpers Python. `clicks` se llena con la ingesta (ADK-16).
+escritura HTTP pública — el Cron Job de Render llama a `upsert_campaign_metrics`. `clicks`
+llega con la ingesta; TikTok/Google no se visitan en esta corrida.
 
 | Migración | Qué agrega |
 |---|---|
@@ -443,8 +444,8 @@ llamada loguea modelo, tokens y latencia.
 
 ## Variables de entorno
 
-Plantillas: `.env.example` (local) y `.env.production.example` (Railway). En producción viven en
-Railway Variables, nunca en la imagen.
+Plantillas: `.env.example` (local) y `.env.production.example`. En producción viven en
+Render (web + Cron Job), nunca en la imagen.
 
 ### Críticas
 
@@ -530,6 +531,7 @@ backend/
   api/connections.py       OAuth y API-key manual por plataforma
   middleware/tenant.py     valida JWT y publica account_id en request.state
   security/                cifrado Fernet de tokens de plataforma
+  jobs/                    ingesta diaria de métricas (cron, no tool del LLM)
   db/                      cliente Supabase, schema.sql, migrations/, seed.py
 frontend/src/
   pages/                   Landing, AuthPage, DashboardPage, AppPage, LegalPage
@@ -545,16 +547,43 @@ docs/                      ver tabla al inicio
 
 ## Deploy
 
-Dos servicios en un proyecto de Railway (backend con `backend/Dockerfile`, frontend estático con
-`frontend/Dockerfile`) y Supabase gestionado fuera. Variables en Railway, nunca en la imagen.
-Plantilla en `.env.production.example`.
+Backend en Render ([web service](https://dashboard.render.com/web/srv-da3je4ou01pc738sn8u0),
+imagen `backend/Dockerfile`), frontend en Cloudflare Pages (`adkio`) y Supabase gestionado fuera.
+Variables en el dashboard de Render, nunca en la imagen. Plantilla en `.env.production.example`.
 
 Criterio de aceptación del deploy: `GET /health` responde 200 y `POST /auth/signup` devuelve
 200/201/409, nunca 500. Un "Failed to fetch" en el browser se interpreta primero como 500 del
 backend por DNS a Supabase, **no** como CORS.
 
-Topología, contrato de variables entre servicios y el runbook del fallo de DNS (incluido
-`ipv6EgressEnabled`) en
+El `CMD` del Dockerfile del backend sigue siendo **uvicorn**. El web service no corre la ingesta
+al boot.
+
+### Cron Job de métricas (Render)
+
+La ingesta diaria **no** vive dentro de uvicorn ni en Railway. Es un **Cron Job aparte** en el
+mismo proyecto Render, misma imagen Docker, con start command overrideado:
+
+```bash
+python -m backend.jobs.ingest_campaign_metrics
+```
+
+| | |
+|---|---|
+| Schedule | `0 6 * * *` (06:00 UTC = 01:00 America/Bogota) |
+| Ventana | D-1, D-2 y D-3 **UTC**. Nunca el día en curso. `metric_date` se persiste como DATE UTC |
+| Alcance | Solo campañas `platform=meta`, `is_mock=false`, con `account_id` y no borradas |
+| Clicks | Llegan en esta corrida (insights de Meta con `time_range` de un día) |
+| Env | Copiar las del web: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `PLATFORM_TOKENS_ENC_KEY`. No hace falta `LLM_*` ni `ADKIO_API_KEY` |
+| Idempotencia | UNIQUE `(account_id, platform, campaign_id, metric_date)` — re-correr el mismo día actualiza, no duplica |
+
+Creación: [dashboard Render → Cron Job](https://dashboard.render.com/create) (Docker, branch
+`main`). Local:
+
+```bash
+python -m backend.jobs.ingest_campaign_metrics
+```
+
+Topología histórica de Railway y el runbook de DNS a Supabase (incluido `ipv6EgressEnabled`) en
 [`docs/adr/ADR-001-railway-production-deploy.md`](docs/adr/ADR-001-railway-production-deploy.md).
 
 ---

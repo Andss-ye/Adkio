@@ -14,6 +14,7 @@ Diseño:
 from __future__ import annotations
 
 import logging
+from datetime import date
 from typing import Optional
 
 from backend.integrations.base import (
@@ -150,7 +151,13 @@ class TikTokAdapter:
             ),
         )
 
-    def get_campaign(self, credentials: TikTokCreds, campaign_id: str) -> CampaignStatus:
+    def get_campaign(
+        self,
+        credentials: TikTokCreds,
+        campaign_id: str,
+        metric_date: Optional[date] = None,
+    ) -> CampaignStatus:
+        # metric_date se acepta por contrato; este adapter no pide reports diarios.
         self._check(credentials)
         params = {
             "advertiser_id": credentials.advertiser_id,
