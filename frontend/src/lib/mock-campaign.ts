@@ -269,7 +269,23 @@ export function buildMockPlan(prompt: string): Plan {
     targeting,
     budget: budgetFor(parsed),
     validation: validationFor(parsed, targeting),
+    claims: claimsFor(),
     duracion_dias: parsed.duration_days,
+  };
+}
+
+/* El copy del mock sale de templates limpios, así que el guardrail siempre pasa.
+   El `rationale` es el literal de la rama sin claims de `claims_validator.py`:
+   no se replican las regex acá — la fuente de verdad es el backend. */
+function claimsFor(): NonNullable<Plan['claims']> {
+  return {
+    passed: true,
+    blockers: [],
+    warnings: [],
+    claims: [],
+    rationale:
+      'El copy no tiene claims que violen las políticas de contenido de Meta: ' +
+      'sin promesas de resultado, claims de salud ni atributos personales.',
   };
 }
 
@@ -292,6 +308,8 @@ const TOOL_TIMINGS: { tool: string; min: number; max: number }[] = [
   { tool: 'budget_validator', min: 600, max: 900 },
   { tool: 'audience_analyzer', min: 1100, max: 1500 },
   { tool: 'copy_generator', min: 1400, max: 1900 },
+  // Rápido a propósito: es regex determinista, no una llamada al LLM.
+  { tool: 'claims_validator', min: 300, max: 500 },
   { tool: 'campaign_validator', min: 700, max: 1000 },
 ];
 
@@ -305,6 +323,7 @@ export async function simulateMockStream(
     budget_validator: plan.budget,
     audience_analyzer: plan.targeting,
     copy_generator: plan.copy,
+    claims_validator: plan.claims,
     campaign_validator: plan.validation,
   };
 

@@ -13,6 +13,35 @@ export type ToolEvent = {
   finishedAt?: number;
 };
 
+/* Salida de `claims_validator` (backend/tools/claims_validator.py). Determinista:
+   regex + lista negra por vertical, sin LLM. El agente la corre siempre antes de
+   `campaign_validator` — no se la expone al modelo. */
+export type ClaimCategoria =
+  | 'promesa_de_resultado'
+  | 'salud'
+  | 'antes_despues'
+  | 'atributo_personal'
+  | 'superlativo';
+
+export type Claim = {
+  campo: 'headline' | 'body' | 'cta';
+  /** Fragmento ofensor literal del copy, tal como lo matcheó la regex. */
+  texto: string;
+  categoria: ClaimCategoria;
+  severidad: 'blocker' | 'warning';
+  sugerencia: string;
+};
+
+export type ClaimsResult = {
+  /** False solo si hay al menos un blocker; los superlativos no lo bajan. */
+  passed: boolean;
+  /** Strings ya humanizados, no objetos. El detalle estructurado va en `claims`. */
+  blockers: string[];
+  warnings: string[];
+  claims: Claim[];
+  rationale: string;
+};
+
 export type Plan = {
   copy: { headline: string; body: string; cta: string; rationale: string };
   targeting: {
@@ -44,6 +73,8 @@ export type Plan = {
     confidence?: number;
     rationale?: string;
   };
+  /** Guardrail de políticas de Meta. Opcional: un backend previo a ADK-10 no lo manda. */
+  claims?: ClaimsResult;
   duracion_dias: number;
   /** Resumen del último refinamiento agéntico (qué cambió y por qué). */
   change_summary?: string;
@@ -368,6 +399,29 @@ export function useCampaignStream() {
         const updated = (await resp.json()) as Plan;
         setPlan(updated);
         setRefineCount((n) => n + 1);
+        /* `refine_plan` vuelve a correr claims_validator sobre el copy refinado.
+           Reemplazamos el veredicto en el timeline en vez de appendear: el panel
+           es el estado actual del razonamiento, no un log. Sin esto seguiría
+           mostrando el bloqueo ya arreglado; appendeando, se apilarían tantas
+           cards como refines haya hecho el usuario. */
+        if (updated.claims) {
+          const claims = updated.claims;
+          setToolEvents((prev) => {
+            const idx = prev.map((e) => e.tool).lastIndexOf('claims_validator');
+            const patched: ToolEvent = {
+              tool: 'claims_validator',
+              status: 'done',
+              result: claims as unknown as Record<string, unknown>,
+              rationale: claims.rationale,
+              // Conservamos los tiempos del paso original: el refine no vuelve a
+              // medir esta tool, y poner 0ms sería inventar un dato.
+              startedAt: idx >= 0 ? prev[idx].startedAt : Date.now(),
+              finishedAt: idx >= 0 ? prev[idx].finishedAt : undefined,
+            };
+            if (idx < 0) return [...prev, patched];
+            return prev.map((e, i) => (i === idx ? patched : e));
+          });
+        }
         return { ok: true, summary: updated.change_summary };
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : 'Error al ajustar el plan' };
