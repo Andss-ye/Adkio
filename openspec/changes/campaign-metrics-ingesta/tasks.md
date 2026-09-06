@@ -24,7 +24,7 @@
 ## 5. PR
 
 - [x] 5.1 Checklist ADK-16 en código: creds por parámetro, sin env en adapters, sin tocar `_CAMPAIGN_FIELDS`, sin LLM en el job
-- [ ] 5.2 Abrir PR a `main` con `Linear: ADK-16` desde `feature/julian-ingesta-metricas`
+- [x] 5.2 Abrir PR a `main` con `Linear: ADK-16` desde `feature/julian-ingesta-metricas`
 
 ## 6. Operación post-merge
 
